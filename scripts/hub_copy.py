@@ -1197,8 +1197,9 @@ def hub_content(sites, *, kind, name, country, slug, nation_slug, canonical) -> 
             size = size_label(site)
             size_html = f' <span class="best-size">{esc(size)}</span>' if size else ""
             items.append(
-                f'<li><a href="/sites/{esc(site["slug"])}/">{esc(site["name"])}</a>{size_html}'
-                f"<p>{esc(fact_line(site))}</p></li>"
+                "<li><div class=\"best-body\">"
+                f'<a href="/sites/{esc(site["slug"])}/">{esc(site["name"])}</a>{size_html}'
+                f"<p>{esc(fact_line(site))}</p></div></li>"
             )
         best_html = f"<h2>{esc(best_heading(name))}</h2><ol class=\"best-list\">{''.join(items)}</ol>"
     body = f"{crumbs}<h1>{esc(h1)}</h1>{prose}{''.join(stats)}{best_html}"
