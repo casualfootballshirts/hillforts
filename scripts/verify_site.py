@@ -110,6 +110,8 @@ def check_chrome(name, text):
                 errors += fail(f"{name} footer missing {label}")
         if "data-cookie-settings" not in footer or ">Cookie settings</button>" not in footer:
             errors += fail(f"{name} footer missing Cookie settings")
+        if "OpenStreetMap contributors" not in footer or "https://www.openstreetmap.org/copyright" not in footer:
+            errors += fail(f"{name} footer missing OpenStreetMap attribution")
     if "/assets/consent.js" not in text:
         errors += fail(f"{name} missing consent script")
     header_at = text.find("<header")
@@ -455,6 +457,54 @@ def main():
         ):
             if needle not in script:
                 errors += fail(f"consent.js missing {needle}")
+
+    access_path = ROOT / "data" / "access.json"
+    if not access_path.exists():
+        errors += fail("missing data/access.json")
+        access = {}
+    else:
+        access = json.loads(access_path.read_text(encoding="utf-8"))
+    if set(access) != {site["slug"] for site in sites}:
+        errors += fail("access.json slugs do not match sites.json")
+    banned_access = ("no data", "No car park", "legal access", "you can walk", "right to visit")
+    parking_checked = way_checked = bare_checked = 0
+    for site in sites:
+        text = (DIST / "sites" / site["slug"] / "index.html").read_text(encoding="utf-8")
+        record = access.get(site["slug"]) or {}
+        if text.count('class="nearby-fort"') != 5:
+            errors += fail(f"{site['code']} should list five nearby hillforts")
+            break
+        if "<h3>Getting there</h3>" not in text:
+            errors += fail(f"{site['code']} missing Getting there")
+            break
+        for phrase in banned_access:
+            if phrase in text:
+                errors += fail(f"{site['code']} contains {phrase}")
+                break
+        if record.get("parking"):
+            if parking_checked < 3:
+                if "car park" not in text or "https://www.google.com/maps/dir/?api=1&amp;destination=" not in text:
+                    errors += fail(f"{site['code']} missing a car park directions link")
+                parking_checked += 1
+        elif "car park" in text:
+            errors += fail(f"{site['code']} mentions a car park without a cached one")
+            break
+        else:
+            bare_checked += 1
+        way = record.get("way") or {}
+        if way.get("kind"):
+            if way_checked < 3:
+                if "OpenStreetMap shows a " not in text and "OpenStreetMap shows the " not in text:
+                    errors += fail(f"{site['code']} missing a careful path sentence")
+                if "passing within" not in text:
+                    errors += fail(f"{site['code']} path sentence is not distance-only")
+                way_checked += 1
+        elif "passing within" in text:
+            errors += fail(f"{site['code']} mentions a path without a cached one")
+            break
+    if parking_checked < 1 or way_checked < 1:
+        errors += fail("could not sample a car park and a path")
+    print(f"Getting there checked on {len(sites)} site pages ({bare_checked} without a car park)")
 
     if errors:
         print(f"{errors} checks failed")

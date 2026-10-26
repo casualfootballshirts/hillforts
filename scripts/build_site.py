@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import shutil
 from collections import defaultdict
 from datetime import date
@@ -13,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 DATA = ROOT / "data" / "sites.json"
+ACCESS = ROOT / "data" / "access.json"
 DIST = ROOT / "dist"
 BASE = "https://hillfortsmap.co.uk"
 GA_MEASUREMENT_ID = "G-3QGXKPZ9XK"
@@ -554,7 +556,7 @@ def fact_rows(site):
 
 
 def attribution() -> str:
-    return """<footer class="site-footer"><div class="wrap"><nav class="footer-nav" aria-label="Information"><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/cookies/">Cookies</a><a href="/terms/">Terms</a><button type="button" class="cookie-settings" data-cookie-settings>Cookie settings</button></nav><p>Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland. <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>. <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. Licence <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</p></div></footer>"""
+    return """<footer class="site-footer"><div class="wrap"><nav class="footer-nav" aria-label="Information"><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/cookies/">Cookies</a><a href="/terms/">Terms</a><button type="button" class="cookie-settings" data-cookie-settings>Cookie settings</button></nav><p>Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland. <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>. <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. Licence <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.</p></div></footer>"""
 
 
 def header(active=None) -> str:
@@ -706,7 +708,133 @@ def list_item(site) -> str:
     )
 
 
-def site_page(site) -> str:
+def travel_distance(metres) -> str:
+    metres = int(metres)
+    if metres < 950:
+        rounded = max(10, int(round(metres / 10.0) * 10))
+        return f"{rounded} m"
+    text = f"{metres / 1000:.1f}"
+    if text.endswith(".0"):
+        text = text[:-2]
+    return f"{text} km"
+
+
+def compass(lat1, lon1, lat2, lon2) -> str:
+    dlon = math.radians(lon2 - lon1)
+    lat1r = math.radians(lat1)
+    lat2r = math.radians(lat2)
+    easting = math.sin(dlon) * math.cos(lat2r)
+    northing = math.cos(lat1r) * math.sin(lat2r) - math.sin(lat1r) * math.cos(lat2r) * math.cos(dlon)
+    bearing = (math.degrees(math.atan2(easting, northing)) + 360) % 360
+    names = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"]
+    return names[int((bearing + 22.5) // 45) % 8]
+
+
+def haversine_m(lat1, lon1, lat2, lon2) -> float:
+    radius = 6371000
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlng = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlng / 2) ** 2
+    return 2 * radius * math.asin(math.sqrt(a))
+
+
+def nearest_hillforts(sites):
+    cell = 0.1
+    grid = defaultdict(list)
+    for index, site in enumerate(sites):
+        grid[(math.floor(site["lat"] / cell), math.floor(site["lon"] / cell))].append(index)
+    found = {}
+    for index, site in enumerate(sites):
+        chosen = []
+        cx = math.floor(site["lat"] / cell)
+        cy = math.floor(site["lon"] / cell)
+        for span in (1, 2, 4, 8, 16):
+            candidates = []
+            for dx in range(-span, span + 1):
+                for dy in range(-span, span + 1):
+                    for other_index in grid.get((cx + dx, cy + dy), ()):
+                        if other_index == index:
+                            continue
+                        other = sites[other_index]
+                        metres = haversine_m(site["lat"], site["lon"], other["lat"], other["lon"])
+                        candidates.append((metres, other_index))
+            candidates.sort()
+            if len(candidates) >= 5:
+                limit = span * cell * 90000 * math.cos(math.radians(site["lat"]))
+                if candidates[4][0] <= limit or span == 16:
+                    chosen = candidates[:5]
+                    break
+        neighbors = []
+        for metres, other_index in chosen:
+            other = sites[other_index]
+            neighbors.append({
+                "slug": other["slug"],
+                "name": other["name"],
+                "metres": int(round(metres)),
+                "bearing": compass(site["lat"], site["lon"], other["lat"], other["lon"]),
+            })
+        found[site["slug"]] = neighbors
+    return found
+
+
+WAY_PHRASE = {
+    "public-footpath": "public footpath",
+    "public-bridleway": "public bridleway",
+    "footway": "footway",
+    "path": "path",
+    "track": "track",
+}
+
+
+def getting_there(site, record, neighbors) -> str:
+    items = []
+    for park in (record or {}).get("parking") or []:
+        bearing = compass(site["lat"], site["lon"], park["lat"], park["lon"])
+        distance = travel_distance(park["metres"])
+        name = park.get("name") or ""
+        if name:
+            sentence = f"OpenStreetMap shows the car park {name}, {distance} to the {bearing}."
+        else:
+            sentence = f"OpenStreetMap shows a car park {distance} to the {bearing}."
+        url = f"https://www.google.com/maps/dir/?api=1&destination={park['lat']:.5f},{park['lon']:.5f}"
+        items.append(
+            f"<li>{esc(sentence)} <a href=\"{esc(url)}\" rel=\"noopener noreferrer\">Directions</a></li>"
+        )
+    way = (record or {}).get("way")
+    if way and way.get("kind") in WAY_PHRASE:
+        noun = WAY_PHRASE[way["kind"]]
+        distance = travel_distance(way["metres"])
+        name = way.get("name") or ""
+        if name:
+            sentence = f"OpenStreetMap shows the {noun} {name} passing within {distance}."
+        else:
+            sentence = f"OpenStreetMap shows a {noun} passing within {distance}."
+        items.append(f"<li>{esc(sentence)}</li>")
+    place = (record or {}).get("place")
+    if place and place.get("name") and place.get("kind") in {"town", "village"}:
+        bearing = compass(site["lat"], site["lon"], place["lat"], place["lon"])
+        distance = travel_distance(place["metres"])
+        sentence = (
+            f"The nearest {place['kind']} on OpenStreetMap is {place['name']}, "
+            f"{distance} to the {bearing}."
+        )
+        items.append(f"<li>{esc(sentence)}</li>")
+    for position, other in enumerate(neighbors or []):
+        link = f'<a href="/sites/{esc(other["slug"])}/">{esc(other["name"])}</a>'
+        distance = esc(travel_distance(other["metres"]))
+        bearing = esc(other["bearing"])
+        if position == 0:
+            sentence = f"The nearest other hillfort is {link}, {distance} to the {bearing}."
+        else:
+            sentence = f"{link} is {distance} to the {bearing}."
+        items.append(f'<li class="nearby-fort">{sentence}</li>')
+    if not items:
+        return ""
+    return f"<h3>Getting there</h3><ul class=\"getting-there\">{''.join(items)}</ul>"
+
+
+def site_page(site, access, neighbors) -> str:
     indexed = bool(site.get("index"))
     robots = "index,follow" if indexed else "noindex,follow"
     crumbs = (
@@ -747,7 +875,7 @@ def site_page(site) -> str:
 <p class="meta">{esc(site.get("county") or "")}, {esc(site.get("country") or "")} · Atlas {esc(site["code"])}</p>
 {lede}
 <div class="layout">
-<article class="panel">{render_facts(site)}{render_links(site)}{render_refs(site)}</article>
+<article class="panel">{render_facts(site)}{getting_there(site, access, neighbors)}{render_links(site)}{render_refs(site)}</article>
 <aside class="panel">
 <div id="map" class="map site-map" data-mode="site" data-lat="{site["lat"]}" data-lon="{site["lon"]}" data-name="{esc(site["name"])}" role="region" aria-label="Map of {esc(site["name"])}"></div>
 </aside>
@@ -940,8 +1068,15 @@ def main():
         })
         bucket["sites"].append(site)
 
+    if not ACCESS.exists():
+        raise SystemExit("data/access.json is missing. Run scripts/fetch_osm_access.py once and commit it.")
+    access = json.loads(ACCESS.read_text(encoding="utf-8"))
+    neighbors = nearest_hillforts(sites)
     for site in sites:
-        write(DIST / "sites" / site["slug"] / "index.html", site_page(site))
+        write(
+            DIST / "sites" / site["slug"] / "index.html",
+            site_page(site, access.get(site["slug"]), neighbors.get(site["slug"])),
+        )
 
     nation_cards = []
     for name, slug in NATION_ORDER:
