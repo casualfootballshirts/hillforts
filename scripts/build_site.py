@@ -15,6 +15,10 @@ SRC = ROOT / "src"
 DATA = ROOT / "data" / "sites.json"
 DIST = ROOT / "dist"
 BASE = "https://hillfortsmap.co.uk"
+GA_MEASUREMENT_ID = "G-3QGXKPZ9XK"
+CONSENT_STORAGE_KEY = "hillforts_consent"
+POLICY_UPDATED = "26 October 2026"
+INFO_PAGES = ("about", "privacy", "cookies", "terms")
 
 NATION_ORDER = [
     ("Scotland", "scotland"),
@@ -549,7 +553,7 @@ def fact_rows(site):
 
 
 def attribution() -> str:
-    return """<footer class="site-footer"><div class="wrap"><p>Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland. <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>. <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. Licence <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</p></div></footer>"""
+    return """<footer class="site-footer"><div class="wrap"><nav class="footer-nav" aria-label="Information"><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/cookies/">Cookies</a><a href="/terms/">Terms</a><button type="button" class="cookie-settings" data-cookie-settings>Cookie settings</button></nav><p>Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland. <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>. <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. Licence <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</p></div></footer>"""
 
 
 def header(active=None) -> str:
@@ -557,8 +561,52 @@ def header(active=None) -> str:
     for name, slug in NATION_ORDER:
         current = ' aria-current="page"' if active == slug else ""
         links.append(f'<a href="/nations/{slug}/"{current}>{esc(name)}</a>')
+    about_current = ' aria-current="page"' if active == "about" else ""
+    links.append(f'<a href="/about/"{about_current}>About</a>')
     return f"""<a class="skip" href="#content">Skip to content</a>
-<header class="site-header"><div class="wrap"><a class="brand" href="/">Hillforts Map</a><nav>{''.join(links)}</nav></div></header>"""
+<header class="site-header"><div class="wrap"><a class="brand" href="/">Hillforts Map</a><nav aria-label="Main">{''.join(links)}</nav></div></header>"""
+
+
+def analytics_head() -> str:
+    return f"""<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){{dataLayer.push(arguments);}}
+gtag('consent', 'default', {{
+  'analytics_storage': 'denied',
+  'ad_storage': 'denied',
+  'ad_user_data': 'denied',
+  'ad_personalization': 'denied'
+}});
+try {{
+  if (localStorage.getItem('{CONSENT_STORAGE_KEY}') === 'accepted') {{
+    gtag('consent', 'update', {{'analytics_storage': 'granted'}});
+  }}
+}} catch (e) {{}}
+</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}"></script>
+<script>
+gtag('js', new Date());
+try {{
+  if (localStorage.getItem('{CONSENT_STORAGE_KEY}') === 'accepted') {{
+    gtag('config', '{GA_MEASUREMENT_ID}');
+  }}
+}} catch (e) {{}}
+</script>"""
+
+
+def cookie_banner() -> str:
+    return f"""<div id="cookie-banner" class="cookie-banner" role="region" aria-labelledby="cookie-banner-title" aria-describedby="cookie-banner-text" hidden tabindex="-1" data-consent-key="{CONSENT_STORAGE_KEY}" data-measurement-id="{GA_MEASUREMENT_ID}">
+<div class="wrap cookie-banner-inner">
+<div class="cookie-banner-copy">
+<p id="cookie-banner-title" class="cookie-banner-title">Cookies</p>
+<p id="cookie-banner-text">Google Analytics stays off unless you accept. It tells us which pages are used. <a href="/cookies/">Cookie policy</a></p>
+</div>
+<div class="cookie-banner-actions">
+<button type="button" class="cookie-choice" id="cookie-reject">Reject</button>
+<button type="button" class="cookie-choice" id="cookie-accept">Accept</button>
+</div>
+</div>
+</div>"""
 
 
 def shell(title, description, robots, canonical, body, active=None, json_ld=None, include_map=True) -> str:
@@ -580,6 +628,7 @@ def shell(title, description, robots, canonical, body, active=None, json_ld=None
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{analytics_head()}
 <title>{esc(title)}</title>
 <meta name="description" content="{esc(description)}">
 <meta name="robots" content="{robots}">
@@ -591,9 +640,11 @@ def shell(title, description, robots, canonical, body, active=None, json_ld=None
 </head>
 <body>
 {header(active)}
+{cookie_banner()}
 <main id="content">{body}</main>
 {attribution()}
 {map_scripts}
+<script src="/assets/consent.js"></script>
 </body>
 </html>
 """
@@ -715,6 +766,146 @@ def comma(value: int) -> str:
     return f"{value:,}"
 
 
+def info_page(slug, title, description, body, active=None) -> None:
+    write(
+        DIST / slug / "index.html",
+        shell(
+            f"{title} | Hillforts Map",
+            description,
+            "index,follow",
+            f"{BASE}/{slug}/",
+            f'<div class="wrap prose">{body}</div>',
+            active=active,
+            include_map=False,
+        ),
+    )
+
+
+def write_info_pages(site_count: int) -> None:
+    ga_cookie = "_ga_" + GA_MEASUREMENT_ID.split("-", 1)[1]
+    about = f"""<h1>About</h1>
+<p>Hillforts Map is a map and directory of {comma(site_count)} hillforts across Britain and Ireland. It is built on the Atlas of Hillforts of Britain and Ireland.</p>
+<p>The map clusters every fort. Zoom in and the groups separate until a single site is in view. You can also browse by nation and then by county or unitary authority: Scotland, England, Wales, the Republic of Ireland, Northern Ireland, and the Isle of Man. Lists and maps can be filtered by type of fort, condition, rampart layout, and whether a scheduled monument number is recorded. You can search by name, parish, or Atlas number.</p>
+<p>Each site page sets out the key facts for that record, including where it is, the type and condition, and the identifiers and links held for it. Where a short introduction is shown, it was written for this site from those facts.</p>
+<p><a href="/#map">Open the map</a></p>
+<h2>Visiting responsibly</h2>
+<p>Many hillforts are on private land, and many are scheduled monuments. A page on this site is not permission to visit. Check access before you set out, keep to public rights of way and other land you are allowed to use, and follow signs on the ground. Do not disturb the earthworks.</p>
+<h2>Data source</h2>
+<p>The records come from Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland. <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>. <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. Licence <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</p>
+<p>This site is shared under the same licence. Keep that attribution if you reuse the data.</p>"""
+    privacy = f"""<h1>Privacy policy</h1>
+<p class="meta">Last updated {POLICY_UPDATED}</p>
+<p>Hillforts Map publishes this website at <a href="{BASE}/">{BASE}/</a>. This policy explains what information is processed when you use the site. The site is operated by Hillforts Map.</p>
+<h2>What this site does</h2>
+<p>Hillforts Map is a static directory and map. There are no accounts, no forms, no comments, no newsletter, and no advertisements.</p>
+<h2>Hosting</h2>
+<p>The site is hosted on GitHub Pages. When you open a page, GitHub receives the request and keeps server logs. Those logs can include your IP address, the date and time, the page address, and basic details of your browser. GitHub describes this in the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement">GitHub Privacy Statement</a>.</p>
+<h2>Map tiles</h2>
+<p>Pages with a map load tiles from OpenStreetMap (<a href="https://tile.openstreetmap.org/">tile.openstreetmap.org</a>). Your browser requests those images directly from OpenStreetMap, so OpenStreetMap receives your IP address and the tile request. The <a href="https://osmfoundation.org/wiki/Privacy_Policy">OpenStreetMap Foundation privacy policy</a> describes that processing.</p>
+<h2>Analytics</h2>
+<p>Hillforts Map uses Google Analytics 4, measurement ID {GA_MEASUREMENT_ID}, to see which pages are used. The tag loads with analytics storage denied. The measurement itself runs, and analytics cookies are stored, only after you accept. If you have not chosen, or if you reject, analytics storage stays denied, the measurement is not sent, and analytics cookies are not set.</p>
+<p>Loading the tag contacts Google, so Google receives your IP address with that script request. After you accept, Google Analytics can store cookies and measure the visit. You can change your mind at any time with Cookie settings in the footer. Rejecting leaves analytics storage denied and clears analytics cookies already stored for this site.</p>
+<p>Google's handling of this information is described in the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>. The site does not show ads. Advertising storage, and the related advertising choices, stay denied.</p>
+<h2>Consent record</h2>
+<p>Your Accept or Reject choice is stored in this browser under the localStorage key <code>{CONSENT_STORAGE_KEY}</code>. It is not sent to a Hillforts Map server. It stays on your device until you change it or clear site data. The <a href="/cookies/">cookie policy</a> lists each cookie and this storage item, with its purpose and lifetime.</p>
+<h2>Why this information is used</h2>
+<p>Analytics cookies are used only with your consent, under the UK GDPR and the Privacy and Electronic Communications Regulations (PECR). The consent record is stored so the site can follow that choice. Hosting logs and map tiles are part of showing you the pages and maps. GitHub and the OpenStreetMap Foundation receive those technical requests and describe them in the policies linked above.</p>
+<h2>How long it is kept</h2>
+<p>The consent record remains in your browser until you change it or delete site data. Google Analytics cookies last up to 2 years and are stored only after you accept. How long Google, GitHub, and the OpenStreetMap Foundation keep information they receive is set out in their own policies. Hillforts Map does not keep a separate database of visitors.</p>
+<h2>Your rights</h2>
+<p>Under the UK GDPR you have:</p>
+<ul>
+<li>the right to be informed</li>
+<li>the right of access</li>
+<li>the right to rectification</li>
+<li>the right to erasure</li>
+<li>the right to restrict processing</li>
+<li>the right to data portability</li>
+<li>the right to object</li>
+<li>rights related to automated decision-making and profiling</li>
+</ul>
+<p>Hillforts Map does not make automated decisions about you that have a legal or similarly significant effect.</p>
+<p>The site does not run accounts or hold a visitor database. The information above sits in your browser, or with Google if you accept analytics, with GitHub for hosting logs, and with the OpenStreetMap Foundation for map tiles. You can reject analytics, change your choice through Cookie settings, and clear cookies and site data in your browser. The policies linked above explain how those organisations handle requests about information they hold.</p>
+<p>Hillforts Map does not publish a postal address or an email address for privacy requests.</p>
+<p>You have the right to complain to the Information Commissioner's Office (ICO), the UK supervisory authority for data protection: <a href="https://ico.org.uk/make-a-complaint/">https://ico.org.uk/make-a-complaint/</a>.</p>
+<h2>Changes</h2>
+<p>If this policy changes, the date at the top will change with it.</p>"""
+    cookies = f"""<h1>Cookie policy</h1>
+<p class="meta">Last updated {POLICY_UPDATED}</p>
+<p>This page lists the cookies and similar storage used on Hillforts Map. The <a href="/privacy/">privacy policy</a> explains the wider picture.</p>
+<h2>Your choice</h2>
+<p>On a first visit, a banner asks you to accept or reject analytics cookies. Accept and Reject are stored on your device, and the banner stays closed until you open Cookie settings in the footer.</p>
+<p>Analytics cookies are not set before you accept, and the measurement request is not sent until you do. If you reject, analytics storage stays denied. Any analytics cookies already stored for this site are cleared. You can change your choice at any time.</p>
+<h2>Storage</h2>
+<h3><code>{CONSENT_STORAGE_KEY}</code></h3>
+<ul>
+<li>Kind: localStorage on your device. It is not a cookie sent to a server.</li>
+<li>Purpose: remembers whether you accepted or rejected analytics cookies, so the banner is not shown again and analytics stays off if you rejected.</li>
+<li>Lifetime: until you change the choice or clear site data for this website.</li>
+<li>Set by: Hillforts Map, when you use the banner.</li>
+</ul>
+<h3><code>_ga</code></h3>
+<ul>
+<li>Kind: cookie.</li>
+<li>Purpose: used by Google Analytics 4 to distinguish visitors.</li>
+<li>Lifetime: 2 years.</li>
+<li>Set by: Google, and only after you accept. More detail is in the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</li>
+</ul>
+<h3><code>{ga_cookie}</code></h3>
+<ul>
+<li>Kind: cookie.</li>
+<li>Purpose: used by Google Analytics 4 to keep session state for measurement ID {GA_MEASUREMENT_ID}.</li>
+<li>Lifetime: 2 years.</li>
+<li>Set by: Google, and only after you accept.</li>
+</ul>
+<h2>Requests that are not cookies set by this site</h2>
+<p>Pages with a map load tiles from OpenStreetMap. That request goes from your browser to OpenStreetMap, which receives your IP address. It is not a cookie set by Hillforts Map. See the <a href="https://osmfoundation.org/wiki/Privacy_Policy">OpenStreetMap Foundation privacy policy</a>.</p>
+<p>The site is hosted on GitHub Pages. GitHub keeps server logs of page requests, as described in the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement">GitHub Privacy Statement</a>.</p>
+<p>The site does not use advertising cookies.</p>"""
+    terms = f"""<h1>Terms of use</h1>
+<p class="meta">Last updated {POLICY_UPDATED}</p>
+<p>These terms cover your use of Hillforts Map at <a href="{BASE}/">{BASE}/</a>, published by Hillforts Map. The <a href="/privacy/">privacy policy</a> and <a href="/cookies/">cookie policy</a> sit alongside them.</p>
+<h2>Disclaimer</h2>
+<p>The maps, directories, and site pages are provided as-is. Hillforts Map cannot guarantee that names, locations, condition, access, or any other detail is accurate, complete, or up to date. Records can be wrong or out of date. Check an authoritative source before you rely on a page.</p>
+<p>Nothing on this site grants any right of access to a hillfort, a monument, or the land it stands on. Many sites are on private land or are scheduled monuments. Any right to visit comes from the landowner and from the law, not from this website. A coordinate is a guide to the recorded location, not permission to cross land.</p>
+<p>Visits are at your own risk. To the extent UK law allows, Hillforts Map is not liable for loss or damage arising from use of the site or from a visit to a place mentioned on it. Nothing in these terms limits liability that cannot be limited under UK law.</p>
+<h2>Visiting</h2>
+<p>Check access before you travel. Keep to public rights of way and other land you are allowed to use, follow signs, and do not disturb the earthworks.</p>
+<h2>Data licence</h2>
+<p>The underlying records come from Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland, <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>, <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. They are used under the Creative Commons Attribution-ShareAlike 4.0 International licence (CC BY-SA 4.0): <a href="https://creativecommons.org/licenses/by-sa/4.0/">https://creativecommons.org/licenses/by-sa/4.0/</a>.</p>
+<p>This site is shared under the same licence. If you share or adapt material from it that is covered by that licence, give appropriate credit, link to the licence, and distribute your adaptation under the same licence. A suitable credit line is: Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland.</p>
+<p>Map tiles are loaded from OpenStreetMap. Map data is &copy; OpenStreetMap contributors.</p>
+<h2>Using the website</h2>
+<p>You may browse the site freely. Do not disrupt it, and do not put an unreasonable load on it or on the OpenStreetMap tile servers the maps use.</p>
+<h2>Changes</h2>
+<p>These terms may be updated. The date at the top is the date of the current version.</p>"""
+    info_page(
+        "about",
+        "About",
+        f"Hillforts Map is a directory and map of {comma(site_count)} hillforts across Britain and Ireland, built on the Atlas of Hillforts of Britain and Ireland.",
+        about,
+        active="about",
+    )
+    info_page(
+        "privacy",
+        "Privacy policy",
+        "How Hillforts Map handles visitor information, including analytics, map tiles, hosting, and the consent record.",
+        privacy,
+    )
+    info_page(
+        "cookies",
+        "Cookie policy",
+        "Cookies and local storage used on Hillforts Map, including Google Analytics cookies and the consent record.",
+        cookies,
+    )
+    info_page(
+        "terms",
+        "Terms of use",
+        "Terms of use for Hillforts Map, including the disclaimer, visiting, and the CC BY-SA data licence.",
+        terms,
+    )
+
+
 def main():
     sites = json.loads(DATA.read_text(encoding="utf-8"))
     if DIST.exists():
@@ -833,6 +1024,8 @@ def main():
         ),
     )
 
+    write_info_pages(len(sites))
+
     map_sites = []
     for site in sites:
         map_sites.append({
@@ -856,6 +1049,7 @@ def main():
 
     today = date.today().isoformat()
     urls = [f"{BASE}/"]
+    urls.extend(f"{BASE}/{slug}/" for slug in INFO_PAGES)
     urls.extend(f"{BASE}/nations/{slug}/" for _name, slug in NATION_ORDER)
     urls.extend(f"{BASE}/counties/{county['slug']}/" for county in sorted(counties.values(), key=lambda item: item["slug"]))
     urls.extend(f"{BASE}/sites/{site['slug']}/" for site in sites if site.get("index"))

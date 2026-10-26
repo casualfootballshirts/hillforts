@@ -270,11 +270,106 @@ h3 { font-size: 1.15rem; margin: 1.2rem 0 0.4rem; }
 
 .site-footer a { color: var(--muted); }
 
+.footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  margin: 0 0 0.7rem;
+}
+
+.footer-nav button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.footer-nav button:hover { color: var(--accent-hover); }
+
+.prose { max-width: 40rem; }
+.prose .meta { margin: 0 0 1rem; }
+.prose h2 { margin-top: 1.8rem; }
+.prose ul { margin: 0.4rem 0 1rem; padding-left: 1.2rem; }
+.prose li { margin: 0.3rem 0; }
+.prose a { overflow-wrap: anywhere; }
+
+.cookie-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1200;
+  max-height: 70vh;
+  overflow: auto;
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -1px 2px rgba(28, 25, 21, 0.06);
+  padding: 0.9rem 0 calc(0.9rem + env(safe-area-inset-bottom));
+}
+
+.cookie-banner[hidden] { display: none; }
+
+.cookie-banner:focus { outline: none; }
+.cookie-banner:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.cookie-banner-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem 1.5rem;
+}
+
+.cookie-banner-copy { max-width: 42rem; }
+.cookie-banner-copy a { white-space: nowrap; }
+.cookie-banner-title {
+  font-family: Georgia, "Iowan Old Style", Palatino, serif;
+  font-weight: 700;
+  margin: 0 0 0.2rem;
+}
+.cookie-banner-copy p { margin: 0; }
+
+.cookie-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cookie-choice {
+  font: inherit;
+  font-size: 0.95rem;
+  min-width: 8.5rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.9rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+.cookie-choice:hover { background: var(--accent-hover); }
+
+body:has(.cookie-banner:not([hidden])) { padding-bottom: 12rem; }
+
 .note { color: var(--muted); }
 
 @media (max-width: 800px) {
   .layout { grid-template-columns: 1fr; }
   .map { height: 60vh; }
+}
+
+@media (max-width: 640px) {
+  .cookie-banner-actions { width: 100%; }
+  .cookie-choice { flex: 1 1 8.5rem; }
 }
 
 @media (max-width: 520px) {
