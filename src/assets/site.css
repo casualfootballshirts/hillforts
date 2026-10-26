@@ -62,11 +62,18 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 }
 
 .brand {
-  font-family: Georgia, "Iowan Old Style", Palatino, serif;
-  font-size: 1.35rem;
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
   color: var(--ink);
   text-decoration: none;
+}
+
+.brand img {
+  display: block;
+  height: 2.85rem;
+  width: auto;
+  max-width: min(19rem, 68vw);
 }
 
 .site-header nav {
@@ -375,5 +382,6 @@ body:has(.cookie-banner:not([hidden])) { padding-bottom: 12rem; }
 @media (max-width: 520px) {
   .facts { grid-template-columns: 1fr; }
   .facts dd { margin-bottom: 0.55rem; }
+  .brand img { height: 2.35rem; }
   body { font-size: 1rem; }
 }

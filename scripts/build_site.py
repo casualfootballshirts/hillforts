@@ -565,7 +565,7 @@ def header(active=None) -> str:
     about_current = ' aria-current="page"' if active == "about" else ""
     links.append(f'<a href="/about/"{about_current}>About</a>')
     return f"""<a class="skip" href="#content">Skip to content</a>
-<header class="site-header"><div class="wrap"><a class="brand" href="/">Hillforts Map</a><nav aria-label="Main">{''.join(links)}</nav></div></header>"""
+<header class="site-header"><div class="wrap"><a class="brand" href="/"><img src="/assets/logo.svg" alt="Hillforts Map" width="306" height="50"></a><nav aria-label="Main">{''.join(links)}</nav></div></header>"""
 
 
 def analytics_head() -> str:
@@ -635,6 +635,15 @@ def shell(title, description, robots, canonical, body, active=None, json_ld=None
 <meta name="robots" content="{robots}">
 <link rel="canonical" href="{esc(canonical)}">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/assets/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" sizes="180x180">
+<meta property="og:title" content="{esc(title)}">
+<meta property="og:description" content="{esc(description)}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{esc(canonical)}">
+<meta property="og:image" content="{BASE}/assets/og.png">
+<meta property="og:image:alt" content="Hillforts Map">
+<meta name="twitter:card" content="summary_large_image">
 {map_head}
 <link rel="stylesheet" href="/assets/site.css">
 {ld}

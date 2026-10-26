@@ -109,6 +109,19 @@ def check_chrome(name, text):
             errors += fail(f"{name} footer missing Cookie settings")
     if "/assets/consent.js" not in text:
         errors += fail(f"{name} missing consent script")
+    header_at = text.find("<header")
+    header_end = text.find("</header>")
+    header = text[header_at:header_end] if header_at != -1 and header_end > header_at else ""
+    if 'src="/assets/logo.svg"' not in header or 'alt="Hillforts Map"' not in header:
+        errors += fail(f"{name} missing header logo")
+    for needle in (
+        'rel="icon" href="/assets/favicon.svg"',
+        'rel="icon" href="/assets/favicon-32.png"',
+        'rel="apple-touch-icon" href="/assets/apple-touch-icon.png"',
+        'property="og:image" content="https://hillfortsmap.co.uk/assets/og.png"',
+    ):
+        if needle not in text:
+            errors += fail(f"{name} missing {needle}")
     for needle in ATTRIBUTION:
         if needle not in text:
             errors += fail(f"{name} missing attribution {needle}")
@@ -152,6 +165,17 @@ def main():
     for name in ("index.html", "404.html", "robots.txt", "sitemap.xml", "CNAME", ".nojekyll"):
         if not (DIST / name).exists():
             errors += fail(f"missing {name}")
+    for name in (
+        "logo.svg",
+        "logo-mark.svg",
+        "favicon.svg",
+        "favicon-32.png",
+        "favicon.ico",
+        "apple-touch-icon.png",
+        "og.png",
+    ):
+        if not (DIST / "assets" / name).exists():
+            errors += fail(f"missing asset {name}")
 
     cname = (DIST / "CNAME").read_text(encoding="utf-8").strip()
     if cname != "hillfortsmap.co.uk":
