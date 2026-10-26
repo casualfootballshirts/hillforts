@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 118" role="img">
+<title>Hillforts Map</title>
+<defs><clipPath id="hill"><path d="M10 90
+C18 88 24 70 40 56
+C58 40 78 30 100 28
+C122 30 142 40 160 56
+C176 70 182 88 190 90
+C172 95 154 88 134 92
+C114 96 102 91 86 94
+C66 98 44 91 26 95
+C16 93 12 91 10 90Z"/></clipPath></defs>
+<path d="M10 90
+C18 88 24 70 40 56
+C58 40 78 30 100 28
+C122 30 142 40 160 56
+C176 70 182 88 190 90
+C172 95 154 88 134 92
+C114 96 102 91 86 94
+C66 98 44 91 26 95
+C16 93 12 91 10 90Z" fill="#fffcf7" stroke="#1f4d3a" stroke-width="4.2" stroke-linejoin="round"/>
+<g clip-path="url(#hill)" fill="none" stroke-linecap="round">
+  <ellipse cx="100" cy="51" rx="44" ry="15" stroke="#1f4d3a" stroke-width="3.2"/>
+  <ellipse cx="100" cy="49" rx="31.5" ry="10.6" stroke="#c4a35a" stroke-width="3.1"/>
+  <ellipse cx="100" cy="47.3" rx="20" ry="6.7" stroke="#1f4d3a" stroke-width="2.8"/>
+  <ellipse cx="100" cy="46" rx="10" ry="3.4" stroke="#c4a35a" stroke-width="2.5"/>
+</g>
+<path fill="#1f4d3a" fill-rule="evenodd" d="M100 6.5c-8.2 0-14.8 6.5-14.8 14.5 0 9.4 14.8 22.2 14.8 22.2s14.8-12.8 14.8-22.2c0-8-6.6-14.5-14.8-14.5zM100 15.6a5.2 5.2 0 1 1 0 10.4 5.2 5.2 0 0 1 0-10.4z"/>
+</svg>
