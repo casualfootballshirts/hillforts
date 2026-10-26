@@ -757,7 +757,7 @@ def site_page(site) -> str:
     return shell(title, description, robots, f"{BASE}/sites/{site['slug']}/", body, active=site["nation"], json_ld=json_ld)
 
 
-def hub_page(title, description, canonical, active, intro, extra, country, county, items) -> str:
+def hub_page(title, description, canonical, active, intro, extra, country, county, items, json_ld=None) -> str:
     results = "".join(list_item(site) for site in items)
     body = f"""<div class="wrap">
 {intro}
@@ -769,7 +769,7 @@ def hub_page(title, description, canonical, active, intro, extra, country, count
 <noscript><p class="note">The map needs JavaScript. The list below works without it.</p></noscript>
 <ul class="site-list" id="results">{results}</ul>
 </div>"""
-    return shell(title, description, "index,follow", canonical, body, active=active)
+    return shell(title, description, "index,follow", canonical, body, active=active, json_ld=json_ld)
 
 
 def comma(value: int) -> str:
@@ -919,6 +919,8 @@ def write_info_pages(site_count: int) -> None:
 
 
 def main():
+    import hub_copy
+
     sites = json.loads(DATA.read_text(encoding="utf-8"))
     if DIST.exists():
         shutil.rmtree(DIST)
@@ -956,44 +958,58 @@ def main():
                 f'<span>{comma(len(county["sites"]))} sites</span></li>'
             )
         group_sorted = sorted(group, key=lambda item: item["name"].lower())
-        intro = f"""<p class="crumbs"><a href="/">Home</a> / {esc(name)}</p>
-<h1>Hillforts in {esc(name)}</h1>
-<p class="intro">{esc(name)} has {comma(len(group))} hillforts in the Atlas of Hillforts of Britain and Ireland. Open a county or unitary authority, or filter the full national list and map.</p>"""
         extra = f"<h2>Counties and unitary authorities</h2><ul class=\"county-grid\">{''.join(county_cards)}</ul>"
-        description = f"Directory of {comma(len(group))} hillforts in {name} from the Atlas of Hillforts of Britain and Ireland."
+        canonical = f"{BASE}/nations/{slug}/"
+        parts = hub_copy.hub_content(
+            group,
+            kind="nation",
+            name=name,
+            country=name,
+            slug=slug,
+            nation_slug=slug,
+            canonical=canonical,
+        )
         write(
             DIST / "nations" / slug / "index.html",
             hub_page(
-                f"Hillforts in {name} | Hillforts Map",
-                description,
-                f"{BASE}/nations/{slug}/",
+                parts["title"],
+                parts["description"],
+                canonical,
                 slug,
-                intro,
+                parts["body"],
                 extra,
                 name,
                 "",
                 group_sorted,
+                parts["json_ld"],
             ),
         )
 
     for county in counties.values():
         group_sorted = sorted(county["sites"], key=lambda item: item["name"].lower())
-        intro = f"""<p class="crumbs"><a href="/">Home</a> / <a href="/nations/{esc(county["nation"])}/">{esc(county["country"])}</a> / {esc(county["name"])}</p>
-<h1>Hillforts in {esc(county["name"])}</h1>
-<p class="intro">{esc(county["name"])}, {esc(county["country"])}, has {comma(len(county["sites"]))} hillforts in the Atlas of Hillforts of Britain and Ireland.</p>"""
-        description = f"Directory of {comma(len(county['sites']))} hillforts in {county['name']}, {county['country']}."
+        canonical = f"{BASE}/counties/{county['slug']}/"
+        parts = hub_copy.hub_content(
+            county["sites"],
+            kind="county",
+            name=county["name"],
+            country=county["country"],
+            slug=county["slug"],
+            nation_slug=county["nation"],
+            canonical=canonical,
+        )
         write(
             DIST / "counties" / county["slug"] / "index.html",
             hub_page(
-                f"Hillforts in {county['name']} | Hillforts Map",
-                description,
-                f"{BASE}/counties/{county['slug']}/",
+                parts["title"],
+                parts["description"],
+                canonical,
                 county["nation"],
-                intro,
+                parts["body"],
                 "",
                 county["country"],
                 county["name"],
                 group_sorted,
+                parts["json_ld"],
             ),
         )
 
