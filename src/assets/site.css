@@ -251,8 +251,10 @@ h3 { font-size: 1.15rem; margin: 1.2rem 0 0.4rem; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 
-.links, .refs { padding-left: 1.15rem; }
-.links li, .refs li { margin: 0.25rem 0; }
+.links, .refs, .getting-there { padding-left: 1.15rem; }
+.links li, .refs li, .getting-there li { margin: 0.35rem 0; }
+.getting-there { max-width: 40rem; }
+.getting-there li { overflow-wrap: anywhere; }
 .refs { font-size: 0.95rem; }
 
 .popup a { font-weight: 650; }
