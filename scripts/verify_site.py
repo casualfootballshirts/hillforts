@@ -170,10 +170,17 @@ def check_hubs(sites):
             errors += fail(f"{label} missing stats")
         if '"@type": "CollectionPage"' not in text:
             errors += fail(f"{label} missing CollectionPage structured data")
+        intro_html = re.search(r'<div class="hub-intro">(.*?)</div>', text, re.S)
         words = hub_intro_words(text)
-        if words is None:
+        if words is None or not intro_html:
             errors += fail(f"{label} missing intro")
             continue
+        intro_plain = html.unescape(re.sub(r"<[^>]+>", " ", intro_html.group(1))).lower()
+        for pattern, phrase in hub_copy.INTRO_BANS:
+            if re.search(pattern, intro_plain):
+                errors += fail(f"{label} intro contains banned phrase {phrase}")
+        if intro_plain.count("atlas of hillforts") > 1:
+            errors += fail(f"{label} intro mentions the Atlas more than once")
         indexed_n = sum(1 for site in group if site.get("index"))
         best = hub_copy.select_best(group, kind)
         main = text.split("<main", 1)[1].split("</main>", 1)[0]
@@ -186,10 +193,10 @@ def check_hubs(sites):
         else:
             titles.append(html.unescape(title.group(1)))
             descriptions.append(html.unescape(description.group(1)))
+        lo, hi = hub_copy.word_limits(len(group), kind)
+        if not (lo <= words <= hi):
+            errors += fail(f"{label} intro is {words} words, expected {lo}–{hi}")
         if indexed_n >= hub_copy.FULL_INDEXED_MIN:
-            lo, hi = hub_copy.WORD_FULL
-            if not (lo <= words <= hi):
-                errors += fail(f"{label} intro is {words} words, expected {lo}–{hi}")
             if "Best hillforts to visit" not in text:
                 errors += fail(f"{label} missing best-hillforts list")
             if '"@type": "ItemList"' not in text:
@@ -200,8 +207,6 @@ def check_hubs(sites):
             if found != expected:
                 errors += fail(f"{label} best list {found} != {expected}")
         else:
-            if words >= hub_copy.WORD_FULL[0] or words < 20:
-                errors += fail(f"{label} short intro is {words} words")
             if "Best hillforts to visit" in text or '"@type": "ItemList"' in text:
                 errors += fail(f"{label} should not have a best-hillforts list")
         if kind == "county" and f'data-county="{html.escape(name, quote=True)}"' not in text:
@@ -316,6 +321,7 @@ def main():
         errors += fail("county page content")
     if "Scotland" not in nation:
         errors += fail("nation page content")
+    errors += check_hubs(sites)
 
     # Spot-check a few more pages for banned narrative, not only the samples.
     checked = 0
@@ -425,8 +431,6 @@ def main():
         ):
             if needle not in script:
                 errors += fail(f"consent.js missing {needle}")
-
-    errors += check_hubs(sites)
 
     if errors:
         print(f"{errors} checks failed")

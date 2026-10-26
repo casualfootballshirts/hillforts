@@ -1,19 +1,19 @@
-"""Original county and nation introductions from structured Atlas fields.
+"""Visitor introductions for county and nation hubs, from structured Atlas fields.
 
 Narrative and *Comments columns are not in the site data and are not used here.
-Public pages never describe a record as indexed.
+Public pages never describe a record as indexed, and an introduction mentions
+the Atlas at most once.
 """
 
 from __future__ import annotations
 
 import html
+import re
 import zlib
 from collections import Counter
 from statistics import median
 
 FULL_INDEXED_MIN = 3
-WORD_FULL = (120, 200)
-WORD_SHORT_MAX = 119
 
 COUNTRY_CODE = {
     "England": "GB",
@@ -24,7 +24,17 @@ COUNTRY_CODE = {
     "Isle of Man": "IM",
 }
 
-ATLAS = "the Atlas of Hillforts of Britain and Ireland"
+BRITAIN = {"England", "Scotland", "Wales"}
+
+
+def word_limits(n: int, kind: str) -> tuple[int, int]:
+    if kind == "nation":
+        return (150, 220)
+    if n <= 1:
+        return (18, 70)
+    if n < 12:
+        return (40, 80)
+    return (90, 150)
 
 
 def esc(value) -> str:
@@ -36,6 +46,9 @@ def crc(key, salt) -> int:
 
 
 def pick(key, salt, options):
+    options = [option for option in options if option]
+    if not options:
+        return None
     return options[crc(key, salt) % len(options)]
 
 
@@ -60,50 +73,26 @@ def join_and(items) -> str:
     return ", ".join(items[:-1]) + ", and " + items[-1]
 
 
-def article(label: str) -> str:
-    word = label.split(" ", 1)[0].lower()
-    if word.startswith(("uni", "one", "eu", "use")):
-        choice = "a"
-    elif word[:1] in "aeiou":
-        choice = "an"
-    else:
-        choice = "a"
-    return f"{choice} {label}"
+def word_count(text: str) -> int:
+    plain = re.sub(r"<[^>]+>", " ", text or "")
+    plain = html.unescape(plain)
+    return len(plain.split())
 
 
 def nforts(n: int) -> str:
-    noun = "hillfort" if n == 1 else "hillforts"
-    number = "one" if n == 1 else comma(n)
-    return f"{number} {noun}"
-
-
-def plural_label(label: str, n: int) -> str:
     if n == 1:
-        return label
-    return label + "s"
-
-
-def finish(text: str) -> str:
-    text = " ".join((text or "").split())
-    if not text:
-        return ""
-    if text[-1] not in ".!?":
-        text += "."
-    return text
-
-
-def word_count(text: str) -> int:
-    return len(text.split())
-
-
-def labels(codes, table):
-    return [table[code] for code in codes or [] if code in table]
+        return "one hillfort"
+    return f"{comma(n)} hillforts"
 
 
 def _tables():
     import build_site as sitegen
 
     return sitegen
+
+
+def labels(codes, table):
+    return [table[code] for code in codes or [] if code in table]
 
 
 def in_phrase(name: str) -> str:
@@ -136,6 +125,14 @@ def where_plain(kind: str, name: str, country: str) -> str:
     return f"{name}, {country}"
 
 
+def place_name(kind: str, name: str) -> str:
+    if kind == "nation" and name == "Isle of Man":
+        return "The Isle of Man"
+    if kind == "nation" and name == "Republic of Ireland":
+        return "The Republic of Ireland"
+    return name
+
+
 def heading(kind: str, name: str) -> str:
     if kind == "nation" and name == "Isle of Man":
         return "Hillforts on the Isle of Man"
@@ -152,22 +149,28 @@ def best_heading(name: str) -> str:
     return f"Best hillforts to visit in {name}"
 
 
+def roman_framing(kind: str, name: str, country: str) -> bool:
+    if kind == "nation":
+        return name in BRITAIN
+    return country in BRITAIN
+
+
 def distinctive_name(site, group) -> str:
     same = [other for other in group if other["name"] == site["name"]]
     if len(same) == 1:
         return site["name"]
     parish = site.get("parish")
-    if parish and sum(1 for other in same if other.get("parish") == parish) == 1:
+    if parish:
         return f"{site['name']} ({parish})"
-    return f"{site['name']} ({site['code']})"
+    return site["name"]
 
 
-def name_list(group, all_sites, limit=3) -> str:
-    ordered = sorted(group, key=lambda site: (site["name"].lower(), site["code"]))
-    names = [distinctive_name(site, all_sites) for site in ordered[:limit]]
-    if len(ordered) > limit:
-        return f"{len(ordered)} hillforts, including {join_and(names)}"
-    return join_and(names)
+def ambiguous_label(site, group) -> bool:
+    same = [
+        other for other in group
+        if other["name"] == site["name"] and (other.get("parish") or "") == (site.get("parish") or "")
+    ]
+    return len(same) > 1
 
 
 def parent_morph(code: str):
@@ -178,44 +181,6 @@ def parent_morph(code: str):
     if "univallate" in code:
         return "univallate"
     return None
-
-
-def condition_phrase(codes) -> str:
-    codes = set(codes or [])
-    bits = []
-    if "extant" in codes:
-        bits.append("extant")
-    if "cropmark" in codes:
-        bits.append("a cropmark")
-    if "destroyed" in codes:
-        bits.append("likely destroyed")
-    if not bits:
-        return ""
-    return "recorded as " + join_and(bits)
-
-
-def setting_phrase(site, topo_labels) -> str:
-    place_bits = []
-    lowland = False
-    for code in site.get("topo") or []:
-        if code not in topo_labels:
-            continue
-        if code == "lowland":
-            lowland = True
-        else:
-            place_bits.append(article(topo_labels[code]))
-    place = ""
-    if place_bits and lowland:
-        place = "on " + join_and(place_bits) + " and in a lowland setting"
-    elif place_bits:
-        place = "on " + join_and(place_bits)
-    elif lowland:
-        place = "in a lowland setting"
-    altitude = site.get("altitude")
-    if isinstance(altitude, (int, float)):
-        height = f"at {format_number(altitude)} m"
-        return f"{place} {height}".strip() if place else height
-    return place
 
 
 def period_labels(site, period_labels_table) -> list[str]:
@@ -231,20 +196,981 @@ def count_sites(sites, pred) -> int:
     return sum(1 for site in sites if pred(site))
 
 
+def visible_earthworks(site) -> bool:
+    condition = set(site.get("condition") or [])
+    return "extant" in condition and "destroyed" not in condition
+
+
+def poor_survival(site) -> bool:
+    condition = set(site.get("condition") or [])
+    return "destroyed" in condition or "cropmark" in condition
+
+
+def area_phrase(value) -> str:
+    if value < 0.95:
+        return "under a hectare"
+    if value >= 10 or abs(value - round(value)) < 0.05:
+        return f"{int(round(value))} hectares"
+    return f"{value:.1f} hectares"
+
+
+def hectare_compound(value):
+    if not isinstance(value, (int, float)) or value < 0.95:
+        return None
+    nearest = int(value + 0.5)
+    if abs(value - nearest) < 0.05:
+        return f"{nearest}-hectare"
+    return f"{value:.1f}-hectare"
+
+
+
+
+def indefinite(phrase: str) -> str:
+    token = phrase.lower()
+    if re.match(r"(8|11|18)(\D|$)", token) or re.match(r"8\d", token):
+        return "an"
+    if token[:1] in "aeiou" and not token.startswith(("uni", "one", "eu", "use")):
+        return "an"
+    return "a"
+
+
+def with_article(phrase: str) -> str:
+    return f"{indefinite(phrase)} {phrase}"
+
+
+def area_words(value) -> str:
+    if value < 0.95:
+        return "under a hectare"
+    nearest = int(value + 0.5)
+    if abs(value - nearest) < 0.05:
+        return "1 hectare" if nearest == 1 else f"{nearest} hectares"
+    if value >= 20:
+        return f"about {nearest} hectares"
+    text = f"{value:.1f}".rstrip("0").rstrip(".")
+    return f"{text} hectares"
+
+
+def condition_note(site) -> str:
+    condition = set(site.get("condition") or [])
+    extant = "extant" in condition
+    if "destroyed" in condition or ("cropmark" in condition and not extant):
+        return "poor"
+    if extant and "cropmark" not in condition:
+        return "visible"
+    return ""
+
+
+def type_plain(site, full=False) -> str:
+    types = set(site.get("types") or [])
+    topo = set(site.get("topo") or [])
+    if "promontory" in types:
+        if full:
+            return "fort on a headland or spur, cut off by banks"
+        if "coastal-promontory" in topo:
+            return "fort on a coastal headland"
+        return "fort on a headland or spur"
+    if "contour" in types:
+        if full:
+            return "fort that follows the contours of a hilltop"
+        return "hilltop fort"
+    if "partial-contour" in types:
+        if full:
+            return "fort that follows part of a hilltop contour"
+        return "fort on part of a hilltop"
+    if "hillslope" in types:
+        return "fort set on a slope"
+    if "level" in types:
+        return "enclosure on level ground"
+    if "marsh" in types:
+        return "fort in marshy ground"
+    if "multiple" in types:
+        return "site with more than one enclosure"
+    return "hillfort"
+
+
+def type_family(site) -> str:
+    types = set(site.get("types") or [])
+    topo = set(site.get("topo") or [])
+    if "promontory" in types or "coastal-promontory" in topo:
+        if "coastal-promontory" in topo:
+            return "coast"
+        return "promontory"
+    if "contour" in types or "partial-contour" in types or "hilltop" in topo:
+        return "hill"
+    if "level" in types or "marsh" in types or "lowland" in topo:
+        return "low"
+    if "hillslope" in types:
+        return "slope"
+    return "other"
+
+
+def rampart_with(site) -> str:
+    parents = []
+    for code in site.get("morph") or []:
+        parent = parent_morph(str(code))
+        if parent and parent not in parents:
+            parents.append(parent)
+    if parents == ["univallate"]:
+        return "with a single rampart"
+    if parents == ["bivallate"]:
+        return "with two lines of rampart"
+    if parents == ["multivallate"]:
+        return "with several lines of rampart"
+    return ""
+
+
+def setting_clause(site, kind: str) -> str:
+    topo = set(site.get("topo") or [])
+    if "ridge" in topo and "ridge" not in kind:
+        return "set on a ridge"
+    if "coastal-promontory" in topo and "coast" not in kind and "headland" not in kind:
+        return "on a coastal headland"
+    if "spur" in topo and "spur" not in kind and "slope" not in kind and "headland" not in kind:
+        return "set on a spur"
+    if "knoll" in topo and "knoll" not in kind:
+        return "on a knoll"
+    if "valley-bottom" in topo and "valley" not in kind:
+        return "in a valley"
+    if "lowland" in topo and "level" not in kind and "low" not in kind:
+        return "on low ground"
+    return ""
+
+
+def kind_with_area(kind: str, enclosed) -> str:
+    area = area_words(enclosed)
+    if kind.startswith("hilltop fort"):
+        return f"hilltop fort of {area}{kind[len('hilltop fort'):]}"
+    if kind.startswith("fort "):
+        return f"fort of {area} {kind[5:]}"
+    if kind.startswith("enclosure"):
+        return f"enclosure of {area}{kind[len('enclosure'):]}"
+    if kind.startswith("site "):
+        return f"site of {area} {kind[5:]}"
+    return f"{kind} of {area}"
+
+
+def portrait_clause(site, full=False) -> str:
+    kind = type_plain(site, full=full)
+    enclosed = site.get("enclosed") if isinstance(site.get("enclosed"), (int, float)) else None
+    rampart = rampart_with(site)
+    setting = setting_clause(site, kind)
+    if enclosed is None:
+        core = kind
+    elif enclosed < 0.95:
+        if "," in kind:
+            head, rest = kind.split(",", 1)
+            core = f"small {head} covering under a hectare,{rest}"
+        else:
+            core = f"small {kind} covering under a hectare"
+    elif enclosed >= 20 or (enclosed >= 10 and abs(enclosed - int(enclosed + 0.5)) < 0.05):
+        core = kind_with_area(kind, enclosed)
+    else:
+        core = f"{hectare_compound(enclosed)} {kind}"
+    phrase = core
+    if rampart:
+        phrase += f", {rampart}" if ("," in core or " of " in core) else f" {rampart}"
+    if setting:
+        phrase += f", {setting}"
+    return with_article(phrase)
+
+
+def fort_link(site, group) -> str:
+    return f'<a href="/sites/{esc(site["slug"])}/">{esc(distinctive_name(site, group))}</a>'
+
+
+def display_link(profile, site) -> str:
+    link = fort_link(site, profile["sites"])
+    if profile["kind"] == "nation":
+        return f"{link} in {esc(site.get('county') or '')}"
+    return link
+
+
+def capitalise(text: str) -> str:
+    if not text or text.startswith("<"):
+        return text
+    return text[0].upper() + text[1:]
+
+
+def proportion(share: float) -> str:
+    if share >= 0.85:
+        return "almost all"
+    if share >= 0.55:
+        return "most"
+    if share >= 0.35:
+        return "many"
+    return "some"
+
+
+def awkward_place(name: str) -> bool:
+    return any(mark in name for mark in (",", "&", "(", " and "))
+
+
+def opening_clause(profile) -> str:
+    count = nforts(profile["n"])
+    where = esc(where_clause(profile["kind"], profile["name"], profile["country"]))
+    place = esc(place_name(profile["kind"], profile["name"]))
+    use_atlas = profile["n"] >= 12 and crc(profile["key"], "atlas") % 5 == 0
+    if profile["kind"] == "nation" and profile["name"] == "Isle of Man":
+        tail = ", scattered across the whole island"
+    elif profile["kind"] == "nation":
+        tail = ", spread across the whole country"
+    else:
+        tail = ""
+    if use_atlas:
+        return f"The Atlas of Hillforts of Britain and Ireland lists {count} {where}{tail}"
+    if awkward_place(profile["name"]):
+        return f"There are {count} {where}{tail}"
+    return pick(profile["key"], "open", [
+        f"{place} has {count}{tail}",
+        f"There are {count} {where}{tail}",
+    ])
+
+
+def shares(profile) -> dict:
+    n = max(profile["n"], 1)
+    types = profile["type_counts"]
+    topo = profile["topo_counts"]
+    return {
+        "prom": types.get("promontory", 0) / n,
+        "coast": topo.get("coastal-promontory", 0) / n,
+        "contour": (types.get("contour", 0) + types.get("partial-contour", 0)) / n,
+        "hilltop": topo.get("hilltop", 0) / n,
+        "level_type": types.get("level", 0) / n,
+        "lowland": topo.get("lowland", 0) / n,
+        "slope": max(types.get("hillslope", 0) / n, topo.get("hillslope", 0) / n),
+        "spur": topo.get("spur", 0) / n,
+    }
+
+
+def landscape_clause(profile):
+    if profile["n"] < 3:
+        return None
+    part = shares(profile)
+    options = []
+    hill_led = (
+        part["contour"] >= 0.4
+        and part["contour"] >= part["prom"]
+        and part["level_type"] < 0.35
+        and part["lowland"] < 0.35
+    )
+    coast_led = part["coast"] >= 0.35 and not (hill_led and part["contour"] >= part["coast"])
+    if coast_led:
+        word = proportion(part["coast"])
+        if part["contour"] >= 0.25 or part["hilltop"] >= 0.25:
+            options = [
+                f"{word} stand on a coastal headland, with banks cutting the promontory off from the land behind, while others follow the contours of a hilltop",
+                f"{word} are forts on a coastal headland, and others follow the contours of a hilltop",
+            ]
+        else:
+            options = [
+                f"{word} stand on a coastal headland, with banks cutting the promontory off from the land behind",
+                f"{word} are forts on a coastal headland, cut off from the land behind by banks",
+            ]
+    elif hill_led:
+        word = proportion(part["contour"])
+        if part["coast"] >= 0.2 and part["prom"] - part["coast"] < 0.2:
+            options = [
+                f"{word} follow the contours of a hilltop, and some stand on coastal headlands cut off by banks",
+                f"{word} are hilltop forts, with some on coastal headlands cut off by banks",
+                f"{word} are forts that follow the contours of a hilltop, with others on coastal headlands",
+            ]
+        elif part["prom"] >= 0.25:
+            options = [
+                f"{word} follow the contours of a hilltop, and others are forts on a headland or spur cut off by banks",
+                f"{word} are hilltop forts, though a good number close off a headland or spur with banks",
+            ]
+        elif part["spur"] >= 0.25:
+            options = [
+                f"{word} follow the contours of a hilltop, though some sit on a spur",
+                f"{word} are hilltop forts, the banks taking their line from the summit, though some sit on a spur",
+                f"{word} are forts that follow the contours of a hilltop, a number of them on a spur",
+            ]
+        else:
+            options = [
+                f"{word} follow the contours of a hilltop",
+                f"{word} are hilltop forts, the banks taking their line from the summit",
+                f"{word} are forts that follow the contours of a hilltop",
+                f"{word} keep to the high ground, with their banks following the hilltop",
+            ]
+    elif part["prom"] >= 0.4:
+        word = proportion(part["prom"])
+        options = [
+            f"{word} are forts on a headland or spur, cut off from the land behind by banks",
+            f"{word} close off a headland or spur with banks",
+            f"{word} are forts on a headland or spur cut off by banks",
+        ]
+    elif part["hilltop"] >= 0.4 and part["level_type"] < 0.35 and part["lowland"] < 0.35:
+        word = proportion(part["hilltop"])
+        if part["coast"] >= 0.2:
+            options = [
+                f"{word} sit on a hilltop, and some stand on coastal headlands cut off by banks",
+                f"{word} are on high ground, with some on coastal headlands cut off by banks",
+            ]
+        else:
+            options = [
+                f"{word} sit on a hilltop",
+                f"{word} are set on high ground",
+            ]
+    elif part["level_type"] >= 0.35:
+        word = proportion(part["level_type"])
+        options = [
+            f"{word} are enclosures on level ground rather than forts on hilltops",
+            f"{word} sit on low, fairly flat ground, the banks forming the enclosure",
+        ]
+    elif part["lowland"] >= 0.35:
+        word = proportion(part["lowland"])
+        options = [
+            f"{word} sit on low ground rather than on hilltops",
+            f"{word} are down on lower ground, away from the hilltops",
+        ]
+    elif part["slope"] >= 0.35:
+        word = proportion(part["slope"])
+        options = [
+            f"{word} are set on a slope rather than on a summit",
+            f"{word} sit on a slope, below the crest of the hill",
+        ]
+    else:
+        bits = []
+        if part["contour"] >= 0.2:
+            bits.append("forts that follow the contours of a hilltop")
+        elif part["hilltop"] >= 0.2:
+            bits.append("forts on a hilltop")
+        if part["prom"] >= 0.2 or part["coast"] >= 0.2:
+            bits.append("forts on a headland or spur cut off by banks")
+        if part["level_type"] >= 0.2 or part["lowland"] >= 0.2:
+            bits.append("enclosures on level ground")
+        if part["slope"] >= 0.2:
+            bits.append("forts set on a slope")
+        if len(bits) >= 2:
+            options = [
+                f"you will find both {bits[0]} and {bits[1]}",
+                f"the forts include {bits[0]} and {bits[1]}",
+            ]
+        elif len(bits) == 1:
+            options = [f"a good number are {bits[0]}"]
+    if not options:
+        return None
+    return pick(profile["key"], "land", options)
+
+
+def opening_sentence(profile, use_land: bool) -> str:
+    opener = opening_clause(profile)
+    land = landscape_clause(profile) if use_land else None
+    if not land:
+        return capitalise(opener) + "."
+    if " and " in land or crc(profile["key"], "join") % 2 == 0:
+        return f"{capitalise(opener)}: {land}."
+    return f"{capitalise(opener)}, and {land}."
+
+
+def largest_sentence(profile):
+    largest = profile["largest"]
+    if not largest or not profile["max_area"]:
+        return None
+    area = area_words(profile["max_area"])
+    if len(largest) > 1:
+        named = [site for site in largest[:2] if not ambiguous_label(site, profile["sites"])]
+        labels = [distinctive_name(site, profile["sites"]) for site in named]
+        if len(named) >= 2 and len(set(labels)) == len(labels):
+            links = join_and(display_link(profile, site) for site in named[:2])
+            return f"The largest are {links}, each covering {area}."
+        return f"The largest cover {area}."
+    site = largest[0]
+    if ambiguous_label(site, profile["sites"]):
+        return f"The largest covers {area}."
+    link = display_link(profile, site)
+    portrait = portrait_clause(site, full=False)
+    median_area = profile["median_area"]
+    giant = (
+        profile["n"] >= 5
+        and median_area
+        and profile["max_area"] >= 10
+        and profile["max_area"] >= 4 * median_area
+    )
+    sentence = f"{link} is much the largest, {portrait}" if giant else f"The largest is {link}, {portrait}"
+    if condition_note(site) == "poor":
+        sentence += ", though little of it survives above ground"
+    return sentence + "."
+
+
+def candidate_forts(profile) -> list:
+    best = select_best(profile["sites"], profile["kind"])
+    if best:
+        return best
+    return sorted(
+        profile["sites"],
+        key=lambda site: (-(site.get("enclosed") or 0), site["name"].lower(), site["code"]),
+    )
+
+
+def other_named(profile, limit: int) -> list:
+    if limit <= 0:
+        return []
+    largest_slugs = {site["slug"] for site in profile["largest"][:1]}
+    seen_counties = {site.get("county") for site in profile["largest"][:1]}
+    chosen = []
+    seen = set()
+
+    def acceptable(site, allow_poor: bool, allow_same_county: bool) -> bool:
+        if site["slug"] in seen or site["slug"] in largest_slugs:
+            return False
+        if ambiguous_label(site, profile["sites"]):
+            return False
+        if not allow_poor and condition_note(site) == "poor":
+            return False
+        if (
+            profile["kind"] == "nation"
+            and not allow_same_county
+            and site.get("county") in seen_counties
+        ):
+            return False
+        return True
+
+    def add(site):
+        seen.add(site["slug"])
+        chosen.append(site)
+        seen_counties.add(site.get("county"))
+
+    pool = candidate_forts(profile)
+    for allow_poor, allow_same in ((False, False), (True, False), (False, True), (True, True)):
+        if profile["kind"] == "nation" and allow_same and len(chosen) >= 2:
+            break
+        for site in pool:
+            if len(chosen) >= limit:
+                return chosen
+            if acceptable(site, allow_poor, allow_same):
+                add(site)
+    return chosen
+
+
+def names_sentence(profile, limit: int):
+    forts = other_named(profile, limit)
+    if not forts:
+        return None
+    joined = join_and(display_link(profile, site) for site in forts)
+    from_best = bool(select_best(profile["sites"], profile["kind"]))
+    if len(forts) == 1:
+        if from_best:
+            return pick(profile["key"], "names1", [
+                f"A good place to start is {joined}.",
+                f"If you are choosing a first visit, look at {joined}.",
+            ])
+        return f"Also look at {joined}."
+    if from_best:
+        return pick(profile["key"], "names", [
+            f"Good places to start include {joined}.",
+            f"If you are choosing a first visit, look at {joined}.",
+            f"The forts to consider first are {joined}.",
+        ])
+    if all((site.get("enclosed") or 0) >= 1 for site in forts):
+        return f"Other sizeable forts include {joined}."
+    return f"Also look at {joined}."
+
+
+def dating_sentence(profile):
+    early = late = roman = medieval = dated = iron = 0
+    for site in profile["sites"]:
+        periods = {code for code in (site.get("periods") or []) if code != "unknown"}
+        if not periods:
+            continue
+        dated += 1
+        if "800-400" in periods:
+            early += 1
+        if "400-ad50" in periods:
+            late += 1
+        if periods & {"800-400", "400-ad50"}:
+            iron += 1
+        if "ad50-400" in periods:
+            roman += 1
+        if periods & {"ad400-800", "post-800"}:
+            medieval += 1
+    if dated < 5:
+        return None
+    britain = roman_framing(profile["kind"], profile["name"], profile["country"])
+    if iron / dated < 0.55 or iron < 5:
+        if medieval >= 5 and medieval / dated >= 0.45 and iron / dated < 0.4:
+            if medieval / profile["n"] >= 0.15:
+                if britain:
+                    return "Many of the dated forts belong to the early medieval centuries, after the Roman period."
+                return "Many of the dated forts belong to the early medieval centuries."
+            if britain:
+                return "Where a date has been suggested, it is often early medieval, in the centuries after the Roman period."
+            return "Where a date has been suggested, it is often early medieval."
+        return None
+    if early >= 3 and late >= 3:
+        span = (
+            "from about 800 BC to the Roman conquest"
+            if britain
+            else "from about 800 BC into the early centuries AD"
+        )
+        core = f"mostly Iron Age, {span}"
+    elif late >= early:
+        core = (
+            "mostly later Iron Age, in the centuries before the Roman conquest"
+            if britain
+            else "mostly later Iron Age, into the early centuries AD"
+        )
+    else:
+        core = "mostly early Iron Age, from about 800 BC"
+    if iron / profile["n"] >= 0.35:
+        sentence = f"They are {core}."
+    else:
+        sentence = f"Where a date has been suggested, they are {core}."
+    if britain and roman >= 5 and roman / dated >= 0.3:
+        sentence += " Some were still occupied in the Roman period."
+    return sentence
+
+
+def morph_classes(profile):
+    classes = []
+    for site in profile["sites"]:
+        parents = []
+        for code in site.get("morph") or []:
+            parent = parent_morph(str(code))
+            if parent and parent not in parents:
+                parents.append(parent)
+        if len(parents) == 1:
+            classes.append(parents[0])
+    return classes
+
+
+def rampart_detail(profile):
+    if profile["n"] < 4:
+        return None
+    classes = morph_classes(profile)
+    if len(classes) < max(4, int(0.35 * profile["n"])):
+        return None
+    known = len(classes)
+    single = sum(1 for item in classes if item == "univallate") / known
+    double = sum(1 for item in classes if item == "bivallate") / known
+    several = sum(1 for item in classes if item == "multivallate") / known
+    stone = profile["surface_counts"].get("stone-wall", 0) / profile["n"]
+    earth = profile["surface_counts"].get("earthen-bank", 0) / profile["n"]
+    if single >= 0.6 and earth >= 0.45 and stone < earth:
+        return "usually with a single earthen rampart"
+    if single >= 0.6 and stone >= 0.4 and stone >= earth:
+        return "usually with a single stone rampart"
+    if single >= 0.6:
+        return "usually with a single rampart"
+    if double >= 0.45 and double >= single:
+        return "often with two lines of rampart"
+    if several >= 0.4 and several >= double and several >= single:
+        return "often with several lines of rampart"
+    return None
+
+
+def size_clause(profile):
+    measured = profile["measured"]
+    if len(measured) < 5 or len(measured) / profile["n"] < 0.55:
+        return None
+    if profile["under_1"] / len(measured) >= 0.6:
+        return "most cover less than a hectare"
+    if profile["median_area"] and profile["median_area"] >= 1.5:
+        return f"a typical enclosure covers {area_words(profile['median_area'])}"
+    return None
+
+
+def survival_text(profile):
+    if profile["n"] < 4:
+        return None
+    visible = profile["visible"] / profile["n"]
+    poor = sum(1 for site in profile["sites"] if condition_note(site) == "poor") / profile["n"]
+    stone = profile["surface_counts"].get("stone-wall", 0) / profile["n"]
+    earth = profile["surface_counts"].get("earthen-bank", 0) / profile["n"]
+    if visible >= 0.55:
+        if stone >= 0.4 and stone >= earth:
+            return pick(profile["key"], "survive", [
+                "Most are still visible on the ground",
+                "At most of them the walls are still there to see",
+            ])
+        return pick(profile["key"], "survive", [
+            "Most still survive as visible earthworks",
+            "At most of them the earthworks are still there to see",
+        ])
+    if poor >= 0.45 and visible <= 0.4:
+        return "At many of them, little survives above ground"
+    return None
+
+
+def character_sentence(profile):
+    survival = survival_text(profile)
+    rampart = rampart_detail(profile)
+    size = size_clause(profile)
+    if survival and survival.startswith("At many"):
+        rampart = None
+    if survival and "wall" in survival.lower() and rampart and "stone" in rampart:
+        rampart = None
+    extras = [item for item in (rampart, size) if item]
+    if survival and extras:
+        if len(extras) == 1 and extras[0].startswith(("most ", "a typical")):
+            return f"{survival}, and {extras[0]}."
+        if len(extras) == 1:
+            return f"{survival}, {extras[0]}."
+        return f"{survival}, {extras[0]}, and {extras[1]}."
+    if survival:
+        return survival + "."
+    lead = {
+        "usually with a single earthen rampart": "A single earthen rampart is the usual form",
+        "usually with a single stone rampart": "A single stone rampart is the usual form",
+        "usually with a single rampart": "A single rampart is the usual form",
+        "often with two lines of rampart": "Two lines of rampart are common",
+        "often with several lines of rampart": "Several lines of rampart are common",
+    }
+    if rampart and size:
+        return f"{lead[rampart]}, and {size}."
+    if rampart:
+        return lead[rampart] + "."
+    if size:
+        return capitalise(size) + "."
+    return None
+
+
+def landuse_clause(profile):
+    if profile["n"] < 4:
+        return None
+    ranked = profile["land_counts"].most_common(1)
+    if not ranked:
+        return None
+    code, count = ranked[0]
+    if count / profile["n"] < 0.45:
+        return None
+    pretty = {
+        "pasture": "pasture",
+        "moorland": "heather moorland",
+        "woodland": "woodland",
+        "forestry": "forestry plantation",
+        "scrub": "scrub or bracken",
+        "arable": "arable land",
+        "coastal-grassland": "coastal grassland",
+        "heath": "heath",
+        "parkland": "parkland",
+    }
+    if code not in pretty:
+        return None
+    if count / profile["n"] >= 0.6:
+        return f"the ground around them is mostly {pretty[code]}"
+    return f"many of the forts lie in {pretty[code]}"
+
+
+def altitude_clause(profile):
+    altitudes = profile["altitudes"]
+    if len(altitudes) < max(4, int(0.5 * profile["n"])):
+        return None
+    lo, hi = min(altitudes), max(altitudes)
+    if hi - lo < 80:
+        return None
+    hi_r = int(round(hi / 10.0) * 10)
+    lo_r = int(round(lo / 10.0) * 10)
+    if lo_r < 30:
+        return f"they run from near sea level up to about {hi_r} m"
+    return f"they stand from about {lo_r} m to about {hi_r} m above sea level"
+
+
+def ground_sentence(profile):
+    land = landuse_clause(profile)
+    altitude = altitude_clause(profile)
+    if land and altitude:
+        return f"{capitalise(land)}, and {altitude}."
+    if land:
+        return capitalise(land) + "."
+    if altitude:
+        return capitalise(altitude) + "."
+    return None
+
+
+def scheduled_sentence(profile):
+    if profile["kind"] == "nation" and profile["name"] in {"Republic of Ireland", "Isle of Man"}:
+        return None
+    if profile["kind"] == "county" and profile["country"] in {"Republic of Ireland", "Isle of Man"}:
+        return None
+    if profile["n"] < 6 or profile["scheduled"] / profile["n"] < 0.55:
+        return None
+    if profile["scheduled"] / profile["n"] >= 0.75:
+        return "Most of them are scheduled monuments."
+    return "Many of them are scheduled monuments."
+
+
+def portrait_aside(profile, skip_text: str = ""):
+    largest = profile["largest"][:1]
+    largest_family = type_family(largest[0]) if largest else ""
+    largest_poor = bool(largest) and condition_note(largest[0]) == "poor"
+    fallback = None
+    for site in other_named(profile, 4):
+        if condition_note(site) == "poor":
+            continue
+        link = display_link(profile, site)
+        if skip_text and link in skip_text:
+            continue
+        portrait = portrait_clause(site, full=False)
+        if portrait in {"a hillfort", "a small hillfort"}:
+            continue
+        sentence = f"{link} is {portrait}."
+        if type_family(site) != largest_family:
+            return sentence
+        if largest_poor and fallback is None:
+            fallback = sentence
+    return fallback
+
+
+def aside_sentence(profile):
+    return portrait_aside(profile)
+
+
+def extra_sentence(profile):
+    return portrait_aside(profile, aside_sentence(profile) or "")
+
+
+def detail_sentence(profile):
+    skip = f"{aside_sentence(profile) or ''} {extra_sentence(profile) or ''}"
+    for site in other_named(profile, 3):
+        if condition_note(site) == "poor":
+            continue
+        link = display_link(profile, site)
+        if link in skip:
+            continue
+        portrait = portrait_clause(site, full=False)
+        if not any(token in portrait for token in ("hectare", "rampart", "headland", "hilltop", "enclosure", "slope")):
+            continue
+        return f"{link} is {portrait}."
+    return None
+
+
+def close_sentence(profile, long: bool) -> str:
+    has_best = profile["indexed_n"] >= FULL_INDEXED_MIN
+    if has_best and long:
+        return pick(profile["key"], "close-l", [
+            "If you are deciding where to go, start with the forts picked out below. The map shows every hillfort, and each name opens its own page.",
+            "The list below is there to help you choose a visit. Every hillfort is on the map, with its own page.",
+        ])
+    if has_best:
+        return pick(profile["key"], "close-s", [
+            "The list below is a good place to start, and the map shows the rest.",
+            "Start with the forts picked out below, or open the map and look around.",
+            "Use the list below to choose a visit, then the map to see what else is nearby.",
+        ])
+    if long:
+        return pick(profile["key"], "close-m", [
+            "The map below shows the full spread, and each name opens its own page.",
+            "Use the map to see how they are spread, and open any name for a closer look.",
+        ])
+    return pick(profile["key"], "close-s2", [
+        "Every fort is on the map below.",
+        "The map below shows where they all sit.",
+    ])
+
+
+def render_pack(profile, name_limit, use_land, use_dating, use_character, use_aside, use_ground, use_scheduled, use_extra, use_detail, long_close):
+    lead = [opening_sentence(profile, use_land)]
+    largest = largest_sentence(profile)
+    if largest:
+        lead.append(largest)
+    names = names_sentence(profile, name_limit)
+    if names:
+        lead.append(names)
+    if use_aside:
+        aside = aside_sentence(profile)
+        if aside:
+            lead.append(aside)
+    if use_extra:
+        extra = extra_sentence(profile)
+        if extra:
+            lead.append(extra)
+    if use_detail:
+        detail = detail_sentence(profile)
+        if detail:
+            lead.append(detail)
+    dating = dating_sentence(profile) if use_dating else None
+    character = character_sentence(profile) if use_character else None
+    colour = []
+    if dating and character and crc(profile["key"], "colour-order") % 2:
+        colour.extend([character, dating])
+    else:
+        if dating:
+            colour.append(dating)
+        if character:
+            colour.append(character)
+    if use_ground:
+        ground = ground_sentence(profile)
+        if ground:
+            colour.append(ground)
+    if use_scheduled:
+        scheduled = scheduled_sentence(profile)
+        if scheduled:
+            colour.append(scheduled)
+    paragraphs = [" ".join(item for item in lead if item)]
+    if colour:
+        paragraphs.append(" ".join(colour))
+    paragraphs.append(close_sentence(profile, long_close))
+    return [paragraph for paragraph in paragraphs if paragraph.strip()]
+
+
+def pack_words(items) -> int:
+    return word_count(" ".join(item for item in items if item))
+
+
+def assemble_many(profile) -> tuple[list[str], int]:
+    lo, hi = word_limits(profile["n"], profile["kind"])
+    target = (lo + hi) // 2 + (crc(profile["key"], "len") % 11) - 5
+    target = max(lo, min(hi, target))
+    name_choices = (4, 3) if profile["kind"] == "nation" else (2, 1)
+    flags = {
+        "land": landscape_clause(profile) is not None,
+        "dating": dating_sentence(profile) is not None,
+        "character": character_sentence(profile) is not None,
+        "aside": aside_sentence(profile) is not None,
+        "ground": ground_sentence(profile) is not None,
+        "scheduled": scheduled_sentence(profile) is not None,
+        "extra": extra_sentence(profile) is not None,
+        "detail": detail_sentence(profile) is not None,
+    }
+    best = None
+    for name_limit in name_choices:
+        for use_land in ((True, False) if flags["land"] else (False,)):
+            for use_dating in ((True, False) if flags["dating"] else (False,)):
+                for use_character in ((True, False) if flags["character"] else (False,)):
+                    for use_aside in ((True, False) if flags["aside"] else (False,)):
+                        for use_ground in ((True, False) if flags["ground"] else (False,)):
+                            for use_scheduled in ((True, False) if flags["scheduled"] else (False,)):
+                                for use_extra in ((True, False) if flags["extra"] else (False,)):
+                                    for use_detail in ((True, False) if flags["detail"] else (False,)):
+                                        for long_close in (False, True):
+                                            paragraphs = render_pack(
+                                                profile,
+                                                name_limit,
+                                                use_land,
+                                                use_dating,
+                                                use_character,
+                                                use_aside,
+                                                use_ground,
+                                                use_scheduled,
+                                                use_extra,
+                                                use_detail,
+                                                long_close,
+                                            )
+                                        words = pack_words(paragraphs)
+                                        distance = 0 if lo <= words <= hi else min(abs(words - lo), abs(words - hi)) + 1000
+                                        essential = 0
+                                        if flags["land"] and not use_land:
+                                            essential += 4
+                                        if flags["dating"] and not use_dating:
+                                            essential += 4
+                                        if flags["character"] and not use_character:
+                                            essential += 3
+                                        if flags["aside"] and not use_aside:
+                                            essential += 1
+                                        fluff = 0
+                                        if use_scheduled:
+                                            fluff += 3
+                                        if use_ground:
+                                            fluff += 2
+                                        if use_extra:
+                                            fluff += 2
+                                        if use_detail:
+                                            fluff += 1
+                                        if long_close:
+                                            fluff += 1
+                                        rank = (
+                                            distance,
+                                            name_choices[0] - name_limit,
+                                            essential,
+                                            fluff,
+                                            abs(words - target),
+                                        )
+                                        if best is None or rank < best[0]:
+                                            best = (rank, paragraphs, words)
+    paragraphs = best[1]
+    return paragraphs, word_count(" ".join(paragraphs))
+
+
+def single_sentences(profile) -> list[str]:
+    site = profile["sites"][0]
+    place = esc(profile["name"])
+    link = fort_link(site, profile["sites"])
+    portrait = portrait_clause(site, full=True)
+    if awkward_place(profile["name"]):
+        first = f"The only recorded hillfort in {place} is {link}, {portrait}."
+    else:
+        first = f"{place}'s only recorded hillfort is {link}, {portrait}."
+    note = condition_note(site)
+    if note == "poor":
+        second = "Little survives above ground today."
+    elif note == "visible":
+        surface = set(site.get("surface") or [])
+        if "stone-wall" in surface and "earthen-bank" not in surface:
+            second = "The stone wall is still there to see."
+        else:
+            second = "The earthworks are still there to see."
+    else:
+        second = "It is marked on the map below."
+    return [first, second]
+
+
+def pair_sentences(profile) -> list[str]:
+    ordered = sorted(
+        profile["sites"],
+        key=lambda site: (-(site.get("enclosed") or 0), site["name"].lower(), site["code"]),
+    )
+    place = esc(profile["name"])
+    where = esc(where_clause(profile["kind"], profile["name"], profile["country"]))
+    if awkward_place(profile["name"]):
+        sentences = [f"There are two hillforts {where}."]
+    else:
+        sentences = [f"{place} has two hillforts."]
+    primary, secondary = ordered[0], ordered[1]
+    detail = f"{fort_link(primary, profile['sites'])} is {portrait_clause(primary, full=True)}"
+    note = condition_note(primary)
+    if note == "poor":
+        detail += ", and little survives above ground"
+    elif note == "visible":
+        detail += ", and the earthworks are still there to see"
+    detail += "."
+    sentences.append(detail)
+    if primary.get("scheduled") and profile["country"] not in {"Republic of Ireland", "Isle of Man"}:
+        sentences.append("It is a scheduled monument.")
+    complement = portrait_clause(secondary, full=True)
+    if complement in {"a hillfort", "a small hillfort"}:
+        sentences.append(f"{fort_link(secondary, profile['sites'])} is the other.")
+    else:
+        sentences.append(f"{fort_link(secondary, profile['sites'])} is {complement}.")
+    note2 = condition_note(secondary)
+    if note2 == "poor" and note != "poor":
+        sentences.append(f"Little survives of {fort_link(secondary, profile['sites'])} above ground.")
+    elif note2 == "visible" and note == "poor":
+        sentences.append(f"The earthworks of {fort_link(secondary, profile['sites'])} are still visible.")
+    sentences.append("Both are marked on the map below.")
+    return sentences
+
+
+def assemble_few(profile) -> tuple[list[str], int]:
+    if profile["n"] <= 1:
+        sentences = single_sentences(profile)
+    else:
+        sentences = pair_sentences(profile)
+    lo, hi = word_limits(profile["n"], profile["kind"])
+    while pack_words(sentences) > hi and len(sentences) > 2:
+        sentences.pop(-2)
+    if pack_words(sentences) < lo:
+        filler = "It is marked on the map below." if profile["n"] <= 1 else "Open either name for a closer look."
+        if filler not in sentences:
+            sentences.append(filler)
+    paragraph = " ".join(sentences)
+    return [paragraph], word_count(paragraph)
+
+
+def assemble(profile) -> tuple[list[str], int]:
+    if profile["n"] <= 2:
+        return assemble_few(profile)
+    return assemble_many(profile)
+
 def build_profile(sites, *, kind, name, country, slug) -> dict:
     tables = _tables()
-    measured = [
-        site for site in sites
-        if isinstance(site.get("enclosed"), (int, float))
-    ]
+    measured = [site for site in sites if isinstance(site.get("enclosed"), (int, float))]
     measured.sort(key=lambda site: (-site["enclosed"], site["name"].lower(), site["code"]))
     areas = [site["enclosed"] for site in measured]
     type_counts = Counter()
     topo_counts = Counter()
     land_counts = Counter()
     surface_counts = Counter()
-    morph_buckets = Counter()
-    morph_partial = Counter()
     for site in sites:
         for code in site.get("types") or []:
             if code in tables.TYPE_LABELS:
@@ -258,35 +1184,6 @@ def build_profile(sites, *, kind, name, country, slug) -> dict:
         for code in site.get("surface") or []:
             if code in tables.SURFACE_LABELS:
                 surface_counts[code] += 1
-        seen = set()
-        partial_seen = set()
-        for code in site.get("morph") or []:
-            parent = parent_morph(code)
-            if not parent:
-                continue
-            if parent not in seen:
-                morph_buckets[parent] += 1
-                seen.add(parent)
-            if str(code).startswith("partial"):
-                partial_seen.add(parent)
-        for parent in partial_seen:
-            morph_partial[parent] += 1
-
-    def has_flag(*needles):
-        def pred(site):
-            cond = set(site.get("condition") or [])
-            return all(needle in cond for needle in needles)
-        return pred
-
-    dated_sites = [site for site in sites if period_labels(site, tables.PERIOD_LABELS)]
-    period_counts = Counter()
-    for site in dated_sites:
-        for label in period_labels(site, tables.PERIOD_LABELS):
-            period_counts[label] += 1
-    reliable = count_sites(
-        sites,
-        lambda site: str(site.get("datingReliability") or "").startswith(("A ", "B ")),
-    )
     largest = []
     if measured:
         hi = measured[0]["enclosed"]
@@ -311,669 +1208,11 @@ def build_profile(sites, *, kind, name, country, slug) -> dict:
         "topo_counts": topo_counts,
         "land_counts": land_counts,
         "surface_counts": surface_counts,
-        "morph_buckets": morph_buckets,
-        "morph_partial": morph_partial,
-        "extant": count_sites(sites, has_flag("extant")),
-        "cropmark": count_sites(sites, has_flag("cropmark")),
-        "destroyed": count_sites(sites, has_flag("destroyed")),
-        "both_extant_destroyed": count_sites(sites, has_flag("extant", "destroyed")),
-        "both_extant_crop": count_sites(sites, has_flag("extant", "cropmark")),
+        "visible": count_sites(sites, visible_earthworks),
         "scheduled": count_sites(sites, lambda site: bool(site.get("scheduled"))),
-        "dated": len(dated_sites),
-        "period_counts": period_counts,
-        "reliable": reliable,
-        "excavation": count_sites(
-            sites,
-            lambda site: any(str(item).lower().startswith("excav") for item in site.get("investigations") or []),
-        ),
-        "geophysical": count_sites(
-            sites,
-            lambda site: any("geophys" in str(item).lower() for item in site.get("investigations") or []),
-        ),
-        "earthwork": count_sites(
-            sites,
-            lambda site: any(str(item).lower().startswith("earth") for item in site.get("investigations") or []),
-        ),
-        "vitrification": surface_counts.get("vitrification", 0),
-        "chevaux": count_sites(sites, lambda site: "chevaux-de-frise" in (site.get("flags") or [])),
-        "guards": count_sites(sites, lambda site: "guard-chambers" in (site.get("flags") or [])),
-        "altitudes": [
-            site["altitude"] for site in sites if isinstance(site.get("altitude"), (int, float))
-        ],
-        "promontory_share": type_counts.get("promontory", 0) / len(sites),
-        "coastal_share": topo_counts.get("coastal-promontory", 0) / len(sites),
+        "altitudes": [site["altitude"] for site in sites if isinstance(site.get("altitude"), (int, float))],
         "stone": surface_counts.get("stone-wall", 0),
     }
-
-
-def opening_sentence(p) -> str:
-    n = p["n"]
-    where = where_clause(p["kind"], p["name"], p["country"])
-    verb = "is" if n == 1 else "are"
-    if p["kind"] == "county":
-        if p["country"] in ("Republic of Ireland", "Isle of Man"):
-            place = f"{p['name']}, {where_plain('nation', p['country'], p['country'])},"
-        else:
-            place = f"{p['name']}, {p['country']},"
-        located = f"{where}," if "," in where else where
-        options = [
-            f"The Atlas of Hillforts of Britain and Ireland records {nforts(n)} {where}.",
-            f"{place} has {nforts(n)} in {ATLAS}.",
-            f"{nforts(n).capitalize()} {located} {verb} recorded in {ATLAS}.",
-        ]
-    else:
-        bare = p["name"]
-        if p["name"] == "Isle of Man":
-            bare = "The Isle of Man"
-        elif p["name"] == "Republic of Ireland":
-            bare = "The Republic of Ireland"
-        options = [
-            f"The Atlas of Hillforts of Britain and Ireland records {nforts(n)} {where}.",
-            f"{bare} has {nforts(n)} in {ATLAS}.",
-            f"{nforts(n).capitalize()} {where} {verb} recorded in {ATLAS}.",
-        ]
-    return pick(p["key"], "open", options)
-
-
-def introductions_sentence(p):
-    k = p["indexed_n"]
-    n = p["n"]
-    if k <= 0:
-        return None
-    if k == n:
-        options = [
-            "Each of these records has a short introduction.",
-            "A short introduction is given for every one of these records.",
-        ]
-    elif k == 1:
-        options = [
-            "One of these records has a short introduction.",
-            "A short introduction is given for one hillfort.",
-        ]
-    else:
-        options = [
-            f"{comma(k)} of these records have a short introduction.",
-            f"A short introduction is given for {comma(k)} hillforts.",
-            f"Short introductions cover {comma(k)} of the {comma(n)} records.",
-        ]
-    return pick(p["key"], "intro", options)
-
-
-def size_sentence(p):
-    measured = p["measured"]
-    if not measured:
-        return None
-    n = p["n"]
-    n_m = len(measured)
-    lo = p["min_area"]
-    hi = p["max_area"]
-    lo_s = format_number(lo)
-    hi_s = format_number(hi)
-    largest = p["largest"]
-    lname = name_list(largest, p["sites"])
-    verb = "is" if len(largest) == 1 else "are"
-    has = "has" if len(largest) == 1 else "have"
-    if len(largest) == 1:
-        top = f"the largest is {lname} at {hi_s} hectares"
-    else:
-        top = f"the largest are {lname}, each at {hi_s} hectares"
-    coverage = ""
-    if n_m < n:
-        coverage = f"Enclosed area is recorded for {nforts(n_m)}. "
-    if n_m == 1:
-        return finish(f"{coverage}The enclosed area of {lname} is {hi_s} hectares")
-    if lo == hi:
-        return finish(f"{coverage}Each recorded enclosed area is {hi_s} hectares")
-
-    under = p["under_1"]
-    med = format_number(p["median_area"])
-    small = n_m >= 8 and under / n_m >= 0.6
-    giant = n_m >= 5 and p["median_area"] and hi >= 4 * p["median_area"] and hi >= 10
-    options = []
-    if small:
-        options.append(finish(
-            f"{coverage}{comma(under)} of the {comma(n_m)} recorded enclosed areas are under one hectare. "
-            f"The median is {med} hectares, and {top}"
-        ))
-        options.append(finish(
-            f"{coverage}Enclosed areas run from {lo_s} to {hi_s} hectares, with a median of {med} hectares. "
-            f"{comma(under)} of those {comma(n_m)} are under one hectare, and {top}"
-        ))
-    elif giant:
-        options.append(finish(
-            f"{coverage}The median enclosed area is {med} hectares. {lname} {has} the largest enclosed area, at {hi_s} hectares"
-        ))
-        options.append(finish(
-            f"{coverage}Recorded enclosures span {lo_s}–{hi_s} hectares. "
-            f"The median is {med} hectares, and {top}"
-        ))
-    options.extend([
-        finish(f"{coverage}Enclosed areas run from {lo_s} to {hi_s} hectares, and {top}"),
-        finish(
-            f"{coverage}{lname} {has} the largest enclosed area, at {hi_s} hectares. "
-            f"The smallest recorded enclosure is {lo_s} hectares"
-        ),
-    ])
-    return pick(p["key"], "size", options)
-
-
-def second_sentence(p):
-    measured = p["measured"]
-    if len(measured) < 2 or not p["max_area"]:
-        return None
-    hi = p["max_area"]
-    seconds = [site for site in measured if site["enclosed"] < hi]
-    if not seconds:
-        return None
-    second_area = seconds[0]["enclosed"]
-    if second_area < 1 or hi < second_area * 2.5:
-        return None
-    group = [site for site in seconds if site["enclosed"] == second_area]
-    name = name_list(group, p["sites"])
-    if len(group) == 1:
-        return finish(f"The next largest enclosed area is {name} at {format_number(second_area)} hectares")
-    return finish(
-        f"The next largest enclosed areas are {name}, each at {format_number(second_area)} hectares"
-    )
-
-
-def type_sentence(p):
-    tables = _tables()
-    counts = p["type_counts"]
-    if not counts:
-        return None
-    ranked = counts.most_common()
-    n = p["n"]
-    if len(ranked) == 1 and ranked[0][1] == n and n > 1:
-        label = plural_label(tables.TYPE_LABELS[ranked[0][0]], n)
-        return finish(f"All {comma(n)} are {label}")
-    chunks = []
-    for code, count in ranked[:3]:
-        label = tables.TYPE_LABELS[code]
-        if count == 1:
-            chunks.append(f"one {label}")
-        else:
-            chunks.append(f"{comma(count)} {plural_label(label, count)}")
-    if len(ranked) > 3 and ranked[3][1] >= 3:
-        options = [
-            finish("Types recorded include " + join_and(chunks) + ". Other types are recorded as well"),
-            finish(join_and(chunks).capitalize() + " are the types with the most records. Other types are recorded as well"),
-        ]
-    else:
-        options = [
-            finish("Types recorded include " + join_and(chunks)),
-            finish(join_and(chunks).capitalize() + " are the types recorded"),
-        ]
-    top_code, top_count = ranked[0]
-    if top_count > 1 and top_count / n >= 0.6:
-        label = plural_label(tables.TYPE_LABELS[top_code], top_count)
-        alt = f"{label.capitalize()} are recorded for {comma(top_count)} of the {comma(n)} hillforts"
-        if len(ranked) > 1:
-            code2, count2 = ranked[1]
-            label2 = tables.TYPE_LABELS[code2]
-            if count2 == 1:
-                alt += f", and one {label2} is recorded as well"
-            else:
-                alt += f", and {plural_label(label2, count2)} for {comma(count2)}"
-        options.append(finish(alt))
-    return pick(p["key"], "types", options)
-
-
-def condition_sentence(p):
-    n = p["n"]
-    extant, crop, destroyed = p["extant"], p["cropmark"], p["destroyed"]
-    both_ed = p["both_extant_destroyed"]
-    both_ec = p["both_extant_crop"]
-    if extant + crop + destroyed == 0:
-        return None
-    if extant == n and crop == 0 and destroyed == 0:
-        return finish(f"All {nforts(n)} are recorded as extant")
-    if extant == n and n > 1:
-        extras = []
-        if destroyed and both_ed == destroyed:
-            extras.append(
-                "one of them is also marked likely destroyed"
-                if destroyed == 1
-                else f"{comma(destroyed)} of them are also marked likely destroyed"
-            )
-        elif destroyed:
-            extras.append(f"likely destroyed is recorded for {nforts(destroyed)}")
-        if crop and both_ec == crop:
-            extras.append(
-                "one of them is also marked as a cropmark"
-                if crop == 1
-                else f"{comma(crop)} of them are also marked as cropmarks"
-            )
-        elif crop:
-            extras.append(f"a cropmark is recorded for {nforts(crop)}")
-        sentence = f"All {comma(n)} are recorded as extant"
-        if extras:
-            sentence += ", and " + join_and(extras)
-        return finish(sentence)
-
-    parts = []
-    if crop:
-        parts.append(("cropmark", crop))
-    if extant:
-        parts.append(("extant", extant))
-    if destroyed:
-        parts.append(("likely destroyed", destroyed))
-    parts.sort(key=lambda item: (-item[1], item[0]))
-
-    def on_phrase(label, count):
-        if label == "cropmark":
-            return f"a cropmark on {nforts(count)}"
-        if label == "likely destroyed":
-            return f"likely destroyed on {nforts(count)}"
-        return f"extant on {nforts(count)}"
-
-    def ellipsis(label, count, first):
-        if label == "cropmark":
-            shown = "a cropmark" if count == 1 else "cropmarks"
-        elif label == "likely destroyed":
-            shown = "likely destroyed"
-        else:
-            shown = "extant"
-        if first:
-            if count == 1:
-                return f"One hillfort is recorded as {shown}"
-            return f"{comma(count)} hillforts are recorded as {shown}"
-        if count == 1:
-            return f"one as {shown}"
-        return f"{comma(count)} as {shown}"
-
-    inventory = "Condition is recorded as " + join_and(on_phrase(label, count) for label, count in parts)
-    listed = join_and(ellipsis(label, count, index == 0) for index, (label, count) in enumerate(parts))
-    overlap = []
-    if both_ed >= 5 and both_ed < destroyed:
-        overlap.append(f"{comma(both_ed)} are marked both extant and likely destroyed")
-    if both_ec >= 5 and both_ec < crop:
-        overlap.append(f"{comma(both_ec)} are marked both extant and a cropmark")
-    options = [inventory, listed]
-    if overlap:
-        extra = ". ".join(sentence[0].upper() + sentence[1:] for sentence in overlap)
-        options = [option + ". " + extra for option in options]
-    return pick(p["key"], "condition", [finish(option) for option in options])
-
-
-def dating_sentence(p):
-    dated = p["dated"]
-    if dated <= 0:
-        return None
-    ranked = p["period_counts"].most_common(3)
-    if dated == 1 and ranked:
-        return finish(f"A period is recorded for one hillfort: {ranked[0][0]}")
-    bits = []
-    for label, count in ranked:
-        noun = "record" if count == 1 else "records"
-        bits.append(f"{label} ({comma(count)} {noun})")
-    if len(bits) == 1:
-        period_clause = bits[0]
-    else:
-        period_clause = bits[0] + ", then " + join_and(bits[1:])
-    sparse = p["n"] >= 20 and dated / p["n"] < 0.15
-    if dated == p["n"]:
-        quant = f"all {comma(p['n'])} hillforts"
-    elif sparse:
-        quant = f"only {comma(dated)} of the {comma(p['n'])} hillforts"
-    else:
-        quant = f"{comma(dated)} of the {comma(p['n'])} hillforts"
-    period_bits = []
-    for label, count in ranked:
-        period_bits.append(f"{label} on {nforts(count)}")
-    options = [
-        finish(f"A period is recorded for {quant}, led by {period_clause}"),
-        finish(f"{quant[:1].upper()}{quant[1:]} {'has' if dated == 1 else 'have'} a recorded period: {join_and(period_bits)}"),
-    ]
-    return pick(p["key"], "dating", options)
-
-
-def reliability_sentence(p):
-    k = p["reliable"]
-    if k < 3:
-        return None
-    if p["dated"] and k / p["dated"] < 0.25 and k < 8:
-        return None
-    return finish(f"Dating reliability is recorded as high or medium for {nforts(k)}")
-
-
-def morph_sentence(p):
-    buckets = p["morph_buckets"]
-    partial = p["morph_partial"]
-    present = [key for key in ("univallate", "bivallate", "multivallate") if buckets.get(key)]
-    if not present:
-        return None
-    bits = []
-    for key in present:
-        count = buckets[key]
-        part = partial.get(key, 0)
-        if count == 1:
-            word = f"partial {key}" if part else key
-            bits.append(f"{word} on one hillfort")
-        elif part <= 0:
-            bits.append(f"{key} on {comma(count)} hillforts")
-        elif part == count:
-            bits.append(f"partial {key} on {comma(count)} hillforts")
-        else:
-            bits.append(f"{key} on {comma(count)} hillforts, {comma(part)} of them partial")
-    paren = []
-    for key in present:
-        count = buckets[key]
-        part = partial.get(key, 0)
-        if count == 1:
-            paren.append(f"{'partial ' if part else ''}{key} on one hillfort")
-        elif part and part != count:
-            paren.append(f"{key} on {comma(count)} hillforts ({comma(part)} partial)")
-        elif part == count:
-            paren.append(f"partial {key} on {comma(count)} hillforts")
-        else:
-            paren.append(f"{key} on {comma(count)} hillforts")
-    if len(bits) == 1:
-        forms = [finish("Rampart form is " + bits[0])]
-    else:
-        forms = [
-            finish("Rampart form is " + "; ".join(bits[:-1]) + "; and " + bits[-1]),
-            finish("The rampart record shows " + join_and(paren)),
-        ]
-    return pick(p["key"], "morph", forms)
-
-
-def scheduled_sentence(p):
-    count = p["scheduled"]
-    if count <= 0:
-        return None
-    if count == p["n"] and count > 1:
-        return finish(f"A scheduled monument number is recorded for each of the {comma(count)} hillforts")
-    return finish(f"A scheduled monument number is recorded for {nforts(count)}")
-
-
-def topo_sentence(p):
-    tables = _tables()
-    ranked = p["topo_counts"].most_common(2)
-    if not ranked:
-        return None
-    if ranked[0][1] < 2 and p["n"] > 4:
-        return None
-
-    def bit(code, count):
-        label = tables.TOPO_LABELS[code]
-        if code == "lowland":
-            return f"a lowland setting for {nforts(count)}"
-        return f"{label} for {nforts(count)}"
-
-    options = [finish("Topographic positions are recorded as " + join_and(bit(code, count) for code, count in ranked))]
-    code, count = ranked[0]
-    label = tables.TOPO_LABELS[code]
-    if code == "lowland":
-        lead = f"A lowland setting is the position most often recorded, for {nforts(count)}"
-    else:
-        lead = f"{label.capitalize()} is the position most often recorded, for {nforts(count)}"
-    if len(ranked) > 1 and ranked[1][1] >= 2:
-        lead += ", followed by " + bit(ranked[1][0], ranked[1][1])
-    options.append(finish(lead))
-    return pick(p["key"], "topo", options)
-
-
-def landuse_sentence(p):
-    tables = _tables()
-    ranked = p["land_counts"].most_common(2)
-    if not ranked:
-        return None
-    if ranked[0][1] < 2 and p["n"] > 3:
-        return None
-    code, count = ranked[0]
-    label = tables.LANDUSE_LABELS[code]
-    if len(ranked) == 1 or ranked[1][1] < 2:
-        return finish(f"The land use most often recorded is {label}, on {nforts(count)}")
-    code2, count2 = ranked[1]
-    return finish(
-        f"Recorded land use is most often {label} ({nforts(count)}), then {tables.LANDUSE_LABELS[code2]} ({nforts(count2)})"
-    )
-
-
-def surface_sentence(p):
-    tables = _tables()
-    ranked = [(code, count) for code, count in p["surface_counts"].most_common() if code != "vitrification"]
-    if not ranked:
-        return None
-    if ranked[0][1] < 2 and p["n"] > 3:
-        return None
-    bits = []
-    for code, count in ranked[:2]:
-        if count < 2 and len(bits) > 0:
-            continue
-        bits.append(f"{tables.SURFACE_LABELS[code]} on {nforts(count)}")
-    if not bits:
-        return None
-    return finish("Visible enclosing works include " + join_and(bits))
-
-
-def altitude_sentence(p):
-    altitudes = p["altitudes"]
-    if not altitudes:
-        return None
-    lo, hi = min(altitudes), max(altitudes)
-    if len(altitudes) == 1 or lo == hi:
-        return finish(f"The recorded altitude is {format_number(lo)} m")
-    if hi - lo < 40 and len(altitudes) >= 4:
-        options = [
-            finish(f"Recorded altitudes sit between {format_number(lo)} m and {format_number(hi)} m"),
-            finish(f"The altitudes on record run only from {format_number(lo)} m to {format_number(hi)} m"),
-        ]
-        return pick(p["key"], "alt", options)
-    return finish(f"Recorded altitudes run from {format_number(lo)} m to {format_number(hi)} m")
-
-
-def investigation_sentence(p):
-    n = p["n"]
-    exc, geo, earth = p["excavation"], p["geophysical"], p["earthwork"]
-    if exc >= 1 and (exc >= 3 or exc / n >= 0.08 or n <= 25):
-        return finish(f"An excavation is listed for {nforts(exc)}")
-    if geo >= 2:
-        return finish(f"A geophysical survey is listed for {nforts(geo)}")
-    if earth >= 8 and earth / n >= 0.25:
-        return finish(f"An earthwork survey is listed for {nforts(earth)}")
-    return None
-
-
-def feature_sentence(p):
-    options = []
-    if p["vitrification"]:
-        options.append(finish(f"Vitrification is recorded on {nforts(p['vitrification'])}"))
-    if p["chevaux"]:
-        options.append(finish(f"Chevaux de frise are recorded at {nforts(p['chevaux'])}"))
-    if p["guards"]:
-        options.append(finish(f"Guard chambers are recorded at {nforts(p['guards'])}"))
-    if not options:
-        return None
-    return pick(p["key"], "feature", options)
-
-
-def describe_named(site, group) -> str:
-    tables = _tables()
-    name = distinctive_name(site, group)
-    type_labels = labels(site.get("types"), tables.TYPE_LABELS)
-    morphs = [label for label in labels(site.get("morph"), tables.MORPH_LABELS) if label != "unknown"]
-    kind_parts = []
-    if morphs:
-        kind_parts.append(join_and(morphs))
-    if type_labels:
-        kind_parts.append(join_and(type_labels))
-    kind = " ".join(kind_parts) or "hillfort"
-    sentence = f"{name} is {article(kind)}"
-    cond = condition_phrase(site.get("condition"))
-    if cond:
-        sentence += f", {cond}"
-    if isinstance(site.get("enclosed"), (int, float)):
-        sentence += f", with an enclosed area of {format_number(site['enclosed'])} hectares"
-    setting = setting_phrase(site, tables.TOPO_LABELS)
-    if setting:
-        sentence += f", {setting}"
-    sentence = finish(sentence)
-    periods = period_labels(site, tables.PERIOD_LABELS)
-    if periods:
-        sentence += " " + finish(f"Dating is recorded for {join_and(periods)}")
-    if site.get("scheduled"):
-        sentence += " " + finish(f"Scheduled monument number {site['scheduled']} is recorded")
-    return sentence
-
-
-def named_sentence(p):
-    ordered = sorted(p["sites"], key=lambda site: site["name"].lower())
-    return " ".join(describe_named(site, p["sites"]) for site in ordered)
-
-
-def choose_frame(p) -> str:
-    options = ["catalogue"]
-    n = p["n"]
-    if n >= 80:
-        options.append("scale")
-    if p["max_area"] and p["median_area"] and p["max_area"] >= 10 and p["max_area"] >= 4 * p["median_area"]:
-        options.append("monument")
-    if p["cropmark"] / n >= 0.28 or p["destroyed"] / n >= 0.28:
-        options.append("survival")
-    if p["promontory_share"] >= 0.4 or p["coastal_share"] >= 0.35:
-        options.append("coast")
-    if p["dated"] >= 5 and p["dated"] / n >= 0.35:
-        options.append("dating")
-    if p["stone"] >= 3 and p["stone"] / n >= 0.3:
-        options.append("stone")
-    return pick(p["key"], "frame", options)
-
-
-def slot_sentences(p, tiny: bool) -> dict:
-    slots = {
-        "open": opening_sentence(p),
-        "introductions": introductions_sentence(p),
-        "size": None if tiny else size_sentence(p),
-        "second": None if tiny else second_sentence(p),
-        "types": None if tiny else type_sentence(p),
-        "condition": None if tiny else condition_sentence(p),
-        "dating": None if tiny else dating_sentence(p),
-        "reliability": None if tiny else reliability_sentence(p),
-        "morph": None if tiny else morph_sentence(p),
-        "scheduled": None if tiny else scheduled_sentence(p),
-        "topo": None if tiny else topo_sentence(p),
-        "landuse": None if tiny else landuse_sentence(p),
-        "surface": None if tiny else surface_sentence(p),
-        "altitude": None if tiny else altitude_sentence(p),
-        "investigation": None if tiny else investigation_sentence(p),
-        "feature": None if tiny else feature_sentence(p),
-        "named": named_sentence(p) if tiny else None,
-    }
-    return slots
-
-
-def assemble(p) -> tuple[list[str], int]:
-    full = p["indexed_n"] >= FULL_INDEXED_MIN
-    tiny = p["n"] <= 2
-    frame = choose_frame(p)
-    slots = slot_sentences(p, tiny)
-    frame_order = {
-        "catalogue": ["open", "introductions", "size", "types", "condition", "morph", "dating"],
-        "scale": ["open", "size", "types", "condition", "introductions", "morph", "dating"],
-        "monument": ["open", "size", "second", "types", "condition", "introductions", "dating", "morph"],
-        "survival": ["open", "condition", "types", "size", "introductions", "dating", "morph"],
-        "coast": ["open", "types", "topo", "size", "condition", "introductions", "morph", "dating"],
-        "dating": ["open", "dating", "size", "types", "condition", "introductions", "morph"],
-        "stone": ["open", "surface", "types", "size", "condition", "introductions", "morph", "dating"],
-    }[frame]
-    if full:
-        core = {"open", "introductions", "size", "types", "condition", "morph", "dating"}
-        if frame == "monument":
-            core.add("second")
-        if frame == "coast":
-            core.add("topo")
-        if frame == "stone":
-            core.add("surface")
-        soft_lo, hard_hi = WORD_FULL
-        target = 148 + crc(p["key"], "len") % 36
-    elif tiny:
-        core = {"open", "named", "introductions"}
-        soft_lo, hard_hi = 24, WORD_SHORT_MAX
-        target = 64
-    elif p["n"] >= 12:
-        core = {"open", "introductions", "size", "types", "condition"}
-        soft_lo, hard_hi = 70, WORD_SHORT_MAX
-        target = 84 + crc(p["key"], "len") % 22
-    else:
-        core = {"open", "introductions", "size", "types", "condition"}
-        soft_lo, hard_hi = 40, WORD_SHORT_MAX
-        target = 58 + crc(p["key"], "len") % 24
-
-    rest = [
-        "second", "dating", "morph", "scheduled", "topo", "landuse", "surface",
-        "altitude", "investigation", "feature", "reliability", "named",
-    ]
-    rot = crc(p["key"], "rot") % len(rest)
-    rest = rest[rot:] + rest[:rot]
-    ordered = []
-    for slot in ["open"] + frame_order + rest:
-        if slot not in ordered:
-            ordered.append(slot)
-
-    chosen = []
-    for slot in ordered:
-        if slot not in core:
-            continue
-        sentence = slots.get(slot)
-        if sentence and sentence not in chosen:
-            chosen.append(sentence)
-    words = word_count(" ".join(chosen))
-    for slot in ordered:
-        if slot in core:
-            continue
-        sentence = slots.get(slot)
-        if not sentence or sentence in chosen:
-            continue
-        extra = word_count(sentence)
-        if words >= target or words + extra > hard_hi:
-            continue
-        chosen.append(sentence)
-        words += extra
-    while words > hard_hi and len(chosen) > 1:
-        words -= word_count(chosen[-1])
-        chosen.pop()
-    if words < soft_lo:
-        for slot in ordered:
-            sentence = slots.get(slot)
-            if not sentence or sentence in chosen:
-                continue
-            extra = word_count(sentence)
-            if words + extra <= hard_hi:
-                chosen.append(sentence)
-                words += extra
-            if words >= soft_lo:
-                break
-    paragraphs = paragraphise(chosen, p["key"])
-    text = " ".join(paragraphs)
-    return paragraphs, word_count(text)
-
-
-def paragraphise(sentences, key) -> list[str]:
-    sentences = [sentence.strip() for sentence in sentences if sentence and sentence.strip()]
-    if not sentences:
-        return []
-    if len(sentences) <= 3:
-        return [" ".join(sentences)]
-    if len(sentences) <= 5:
-        cut = 3 if crc(key, "para") % 2 and len(sentences) >= 4 else 2
-        cut = min(cut, len(sentences) - 1)
-        return [" ".join(sentences[:cut]), " ".join(sentences[cut:])]
-    if len(sentences) >= 7 and crc(key, "three") % 2 == 0:
-        first = 2 + (crc(key, "c1") % 2)
-        second = first + max(2, (len(sentences) - first) // 2)
-        second = min(second, len(sentences) - 1)
-        if second <= first:
-            second = first + 1
-        return [
-            " ".join(sentences[:first]),
-            " ".join(sentences[first:second]),
-            " ".join(sentences[second:]),
-        ]
-    cut = 2 + (crc(key, "cut") % 3)
-    cut = min(max(2, cut), len(sentences) - 2)
-    return [" ".join(sentences[:cut]), " ".join(sentences[cut:])]
 
 
 def visit_score(site) -> float:
@@ -1032,55 +1271,16 @@ def select_best(sites, kind: str) -> list:
 
 
 def fact_line(site) -> str:
-    tables = _tables()
-    type_labels = labels(site.get("types"), tables.TYPE_LABELS)
-    morphs = [label for label in labels(site.get("morph"), tables.MORPH_LABELS) if label != "unknown"]
-    both_partial = (
-        len(morphs) == 1
-        and len(type_labels) == 1
-        and morphs[0].startswith("partial")
-        and type_labels[0].startswith("partial")
-    )
-    if len(morphs) == 1 and len(type_labels) == 1 and not both_partial:
-        kind = f"{morphs[0]} {type_labels[0]}"
-    elif morphs and type_labels:
-        kind = f"{join_and(type_labels)} with {join_and(morphs)} ramparts"
-    elif type_labels:
-        kind = join_and(type_labels)
-    elif morphs:
-        kind = join_and(morphs) + " hillfort"
-    else:
-        kind = "hillfort"
-    cond = condition_phrase(site.get("condition"))
-    setting = setting_phrase(site, tables.TOPO_LABELS)
-    periods = period_labels(site, tables.PERIOD_LABELS)
-    surfaces = labels(site.get("surface"), tables.SURFACE_LABELS)[:2]
-    entrances = site.get("entrances")
-    extras = []
-    if periods:
-        extras.append("with dating recorded for " + join_and(periods))
-    if isinstance(entrances, int) and entrances > 0:
-        noun = "entrance" if entrances == 1 else "entrances"
-        small = ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
-        number = small[entrances - 1] if 1 <= entrances <= 9 else comma(entrances)
-        extras.append(f"with {number} possible original {noun}")
-    if surfaces:
-        mass = {"rubble", "vitrification", "timber", "other burning", "unfinished work"}
-        bits = [surface if surface in mass else article(surface) for surface in surfaces]
-        extras.append("with " + join_and(bits))
-    extra = pick(site["slug"], "fact-extra", extras + [None]) if extras else None
-    use_lead = pick(site["slug"], "fact-shape", ("it", "recorded"))
-    if use_lead == "recorded" and cond:
-        sentence = f"{cond[:1].upper()}{cond[1:]}, it is {article(kind)}"
-    else:
-        sentence = f"It is {article(kind)}"
-        if cond:
-            sentence += f", {cond}"
-    if setting:
-        sentence += f", {setting}"
-    if extra and word_count(sentence + " " + extra) <= 40:
-        sentence += f", {extra}"
-    return finish(sentence)
+    sentence = f"It is {portrait_clause(site, full=False)}"
+    note = condition_note(site)
+    if note == "poor":
+        return sentence + ", and little survives above ground."
+    if note == "visible":
+        surface = set(site.get("surface") or [])
+        if "stone-wall" in surface and "earthen-bank" not in surface:
+            return sentence + ", and the stone wall is still visible."
+        return sentence + ", and the earthworks are still visible."
+    return sentence + "."
 
 
 def size_label(site) -> str:
@@ -1091,51 +1291,51 @@ def size_label(site) -> str:
     return ""
 
 
-def stats_rows(p) -> list[tuple[str, str, str]]:
-    rows = [("Hillforts", comma(p["n"]), "")]
-    if p["indexed_n"]:
-        rows.append(("With an introduction", comma(p["indexed_n"]), ""))
-    if p["largest"]:
+def stats_rows(profile) -> list[tuple[str, str, str]]:
+    rows = [("Hillforts", comma(profile["n"]), "")]
+    if profile["largest"]:
         rows.append((
-            "Largest enclosed area",
-            f"{format_number(p['max_area'])} ha",
-            name_list(p["largest"], p["sites"], limit=2),
+            "Largest",
+            f"{format_number(profile['max_area'])} ha",
+            distinctive_name(profile["largest"][0], profile["sites"]),
         ))
-    if p["extant"]:
-        rows.append(("Recorded as extant", comma(p["extant"]), ""))
-    if p["scheduled"]:
-        rows.append(("Scheduled monument", comma(p["scheduled"]), ""))
+    if profile["visible"]:
+        rows.append(("Visible earthworks", comma(profile["visible"]), ""))
+    if profile["scheduled"]:
+        rows.append(("Scheduled monument", comma(profile["scheduled"]), ""))
     return rows
 
 
-def meta_description(p, has_best: bool) -> str:
-    where = where_plain(p["kind"], p["name"], p["country"])
-    lead_n = nforts(p["n"])
-    visit = " Includes hillforts to visit." if has_best else ""
-    largest = ""
-    if p["largest"]:
-        largest = f" Largest enclosed area: {name_list(p['largest'], p['sites'], limit=1)}, {format_number(p['max_area'])} ha."
-    options = [
-        f"Directory of {lead_n} in {where} from the Atlas of Hillforts of Britain and Ireland.{largest}{visit}",
-        f"{lead_n.capitalize()} in {where}, with type, condition, and enclosed area from the Atlas of Hillforts.{visit}",
-        f"{heading(p['kind'], p['name'])}: {lead_n} from the Atlas of Hillforts of Britain and Ireland.{largest}",
-    ]
-    text = pick(p["key"], "meta", options)
-    if len(text) > 185:
-        text = f"{lead_n.capitalize()} in {where} from the Atlas of Hillforts of Britain and Ireland.{visit}"
-    return " ".join(text.split())
+def meta_description(profile, has_best: bool) -> str:
+    where = where_plain(profile["kind"], profile["name"], profile["country"])
+    lead = f"{nforts(profile['n']).capitalize()} in {where}."
+    if profile["largest"]:
+        lead += (
+            f" {distinctive_name(profile['largest'][0], profile['sites'])} is the largest, "
+            f"at {format_number(profile['max_area'])} ha."
+        )
+    if has_best:
+        lead += " Places to visit are picked out on the page."
+    else:
+        lead += " See them on the map."
+    text = " ".join(lead.split())
+    if len(text) > 180:
+        text = f"{nforts(profile['n']).capitalize()} in {where}."
+        if has_best:
+            text += " Places to visit are picked out on the page."
+    return text
 
 
-def json_ld(p, best, description, canonical, h1) -> dict:
-    code = COUNTRY_CODE[p["country"] if p["kind"] == "county" else p["name"]]
-    place = {"@type": "Place", "name": p["name"]}
-    if p["kind"] == "county":
+def json_ld(profile, best, description, canonical, h1) -> dict:
+    code = COUNTRY_CODE[profile["country"] if profile["kind"] == "county" else profile["name"]]
+    place = {"@type": "Place", "name": profile["name"]}
+    if profile["kind"] == "county":
         place["address"] = {
             "@type": "PostalAddress",
-            "addressRegion": p["name"],
+            "addressRegion": profile["name"],
             "addressCountry": code,
         }
-        place["containedInPlace"] = {"@type": "Place", "name": p["country"]}
+        place["containedInPlace"] = {"@type": "Place", "name": profile["country"]}
     else:
         place["address"] = {"@type": "PostalAddress", "addressCountry": code}
     data = {
@@ -1149,7 +1349,7 @@ def json_ld(p, best, description, canonical, h1) -> dict:
     if best:
         data["mainEntity"] = {
             "@type": "ItemList",
-            "name": best_heading(p["name"]),
+            "name": best_heading(profile["name"]),
             "itemListOrder": "https://schema.org/ItemListOrderDescending",
             "numberOfItems": len(best),
             "itemListElement": [
@@ -1165,14 +1365,40 @@ def json_ld(p, best, description, canonical, h1) -> dict:
     return data
 
 
+INTRO_BANS = (
+    (r"\brecords?\b", "record"),
+    (r"recorded for", "recorded for"),
+    (r"short introduction", "short introduction"),
+    (r"other types", "other types"),
+    (r"likely destroyed", "likely destroyed"),
+    (r"\bunivallate\b", "univallate"),
+    (r"\bbivallate\b", "bivallate"),
+    (r"\bmultivallate\b", "multivallate"),
+    (r"dating reliability", "dating reliability"),
+)
+
+
+def assert_intro(profile, paragraphs, words: int) -> None:
+    lo, hi = word_limits(profile["n"], profile["kind"])
+    if not (lo <= words <= hi):
+        raise RuntimeError(f"{profile['slug']} intro is {words} words; expected {lo}–{hi}")
+    plain = html.unescape(re.sub(r"<[^>]+>", " ", " ".join(paragraphs))).lower()
+    for pattern, label in INTRO_BANS:
+        if re.search(pattern, plain):
+            raise RuntimeError(f"{profile['slug']} intro contains {label}")
+    if plain.count("atlas of hillforts") > 1:
+        raise RuntimeError(f"{profile['slug']} intro mentions the Atlas more than once")
+    links = re.findall(r'href="/sites/[^"]+/"', " ".join(paragraphs))
+    if profile["n"] >= 1 and not links:
+        raise RuntimeError(f"{profile['slug']} intro does not link a hillfort")
+    if profile["kind"] == "nation" and len(links) < 3:
+        raise RuntimeError(f"{profile['slug']} intro names too few hillforts")
+
+
 def hub_content(sites, *, kind, name, country, slug, nation_slug, canonical) -> dict:
     profile = build_profile(sites, kind=kind, name=name, country=country, slug=slug)
     paragraphs, words = assemble(profile)
-    full = profile["indexed_n"] >= FULL_INDEXED_MIN
-    if full and not (WORD_FULL[0] <= words <= WORD_FULL[1]):
-        raise RuntimeError(f"{slug} intro is {words} words; expected {WORD_FULL[0]}–{WORD_FULL[1]}")
-    if not full and not (20 <= words <= WORD_SHORT_MAX):
-        raise RuntimeError(f"{slug} short intro is {words} words")
+    assert_intro(profile, paragraphs, words)
     best = select_best(sites, kind)
     h1 = heading(kind, name)
     description = meta_description(profile, bool(best))
@@ -1184,7 +1410,7 @@ def hub_content(sites, *, kind, name, country, slug, nation_slug, canonical) -> 
             f'<p class="crumbs"><a href="/">Home</a> / '
             f'<a href="/nations/{esc(nation_slug)}/">{esc(country)}</a> / {esc(name)}</p>'
         )
-    prose = '<div class="hub-intro">' + "".join(f"<p>{esc(paragraph)}</p>" for paragraph in paragraphs) + "</div>"
+    prose = '<div class="hub-intro">' + "".join(f"<p>{paragraph}</p>" for paragraph in paragraphs) + "</div>"
     stats = ['<dl class="hub-stats">']
     for label, value, sub in stats_rows(profile):
         sub_html = f"<span>{esc(sub)}</span>" if sub else ""
