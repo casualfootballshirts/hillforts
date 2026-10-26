@@ -17,6 +17,7 @@ DIST = ROOT / "dist"
 BASE = "https://hillfortsmap.co.uk"
 GA_MEASUREMENT_ID = "G-3QGXKPZ9XK"
 CONSENT_STORAGE_KEY = "hillforts_consent"
+PRIVACY_EMAIL = "privacy@hillfortsmap.co.uk"
 POLICY_UPDATED = "26 October 2026"
 INFO_PAGES = ("about", "privacy", "cookies", "terms")
 
@@ -795,7 +796,9 @@ def write_info_pages(site_count: int) -> None:
 <p>This site is shared under the same licence. Keep that attribution if you reuse the data.</p>"""
     privacy = f"""<h1>Privacy policy</h1>
 <p class="meta">Last updated {POLICY_UPDATED}</p>
-<p>Hillforts Map publishes this website at <a href="{BASE}/">{BASE}/</a>. This policy explains what information is processed when you use the site. The site is operated by Hillforts Map.</p>
+<p>Hillforts Map publishes this website at <a href="{BASE}/">{BASE}/</a>. This policy explains what information is processed when you use the site.</p>
+<h2>Who we are</h2>
+<p>Hillforts Map is the controller for this site. To contact us about privacy, email <a href="mailto:{PRIVACY_EMAIL}">{PRIVACY_EMAIL}</a>.</p>
 <h2>What this site does</h2>
 <p>Hillforts Map is a static directory and map. There are no accounts, no forms, no comments, no newsletter, and no advertisements.</p>
 <h2>Hosting</h2>
@@ -826,7 +829,7 @@ def write_info_pages(site_count: int) -> None:
 </ul>
 <p>Hillforts Map does not make automated decisions about you that have a legal or similarly significant effect.</p>
 <p>The site does not run accounts or hold a visitor database. The information above sits in your browser, or with Google if you accept analytics, with GitHub for hosting logs, and with the OpenStreetMap Foundation for map tiles. You can reject analytics, change your choice through Cookie settings, and clear cookies and site data in your browser. The policies linked above explain how those organisations handle requests about information they hold.</p>
-<p>Hillforts Map does not publish a postal address or an email address for privacy requests.</p>
+<p>To exercise these rights with Hillforts Map, email <a href="mailto:{PRIVACY_EMAIL}">{PRIVACY_EMAIL}</a>.</p>
 <p>You have the right to complain to the Information Commissioner's Office (ICO), the UK supervisory authority for data protection: <a href="https://ico.org.uk/make-a-complaint/">https://ico.org.uk/make-a-complaint/</a>.</p>
 <h2>Changes</h2>
 <p>If this policy changes, the date at the top will change with it.</p>"""
@@ -861,10 +864,10 @@ def write_info_pages(site_count: int) -> None:
 <h2>Requests that are not cookies set by this site</h2>
 <p>Pages with a map load tiles from OpenStreetMap. That request goes from your browser to OpenStreetMap, which receives your IP address. It is not a cookie set by Hillforts Map. See the <a href="https://osmfoundation.org/wiki/Privacy_Policy">OpenStreetMap Foundation privacy policy</a>.</p>
 <p>The site is hosted on GitHub Pages. GitHub keeps server logs of page requests, as described in the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement">GitHub Privacy Statement</a>.</p>
-<p>The site does not use advertising cookies.</p>"""
+<p>The site does not use advertising cookies. Questions about cookies can go to <a href="mailto:{PRIVACY_EMAIL}">{PRIVACY_EMAIL}</a>.</p>"""
     terms = f"""<h1>Terms of use</h1>
 <p class="meta">Last updated {POLICY_UPDATED}</p>
-<p>These terms cover your use of Hillforts Map at <a href="{BASE}/">{BASE}/</a>, published by Hillforts Map. The <a href="/privacy/">privacy policy</a> and <a href="/cookies/">cookie policy</a> sit alongside them.</p>
+<p>These terms cover your use of Hillforts Map at <a href="{BASE}/">{BASE}/</a>, published by Hillforts Map. The <a href="/privacy/">privacy policy</a> and <a href="/cookies/">cookie policy</a> sit alongside them. Privacy questions can go to <a href="mailto:{PRIVACY_EMAIL}">{PRIVACY_EMAIL}</a>.</p>
 <h2>Disclaimer</h2>
 <p>The maps, directories, and site pages are provided as-is. Hillforts Map cannot guarantee that names, locations, condition, access, or any other detail is accurate, complete, or up to date. Records can be wrong or out of date. Check an authoritative source before you rely on a page.</p>
 <p>Nothing on this site grants any right of access to a hillfort, a monument, or the land it stands on. Many sites are on private land or are scheduled monuments. Any right to visit comes from the landowner and from the law, not from this website. A coordinate is a guide to the recorded location, not permission to cross land.</p>

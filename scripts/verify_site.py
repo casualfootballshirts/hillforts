@@ -34,6 +34,7 @@ ATTRIBUTION = [
 
 GA_ID = "G-3QGXKPZ9XK"
 CONSENT_KEY = "hillforts_consent"
+PRIVACY_EMAIL = "privacy@hillfortsmap.co.uk"
 CONSENT_DENIED = (
     "analytics_storage",
     "ad_storage",
@@ -275,6 +276,8 @@ def main():
             CONSENT_KEY,
             GA_ID,
             "no accounts",
+            "Who we are",
+            f"mailto:{PRIVACY_EMAIL}",
         ),
         "cookies": (
             "Last updated 26 October 2026",
@@ -284,9 +287,11 @@ def main():
             "2 years",
             "localStorage",
             "https://policies.google.com/privacy",
+            f"mailto:{PRIVACY_EMAIL}",
         ),
         "terms": (
             "Last updated 26 October 2026",
+            f"mailto:{PRIVACY_EMAIL}",
             "as-is",
             "right of access",
             "own risk",
@@ -299,6 +304,8 @@ def main():
         for phrase in phrases:
             if phrase not in text:
                 errors += fail(f"{slug} page missing {phrase}")
+        if "postal address" in text.lower() or "does not publish a postal address" in text:
+            errors += fail(f"{slug} still says no contact address is published")
 
     consent_js = DIST / "assets" / "consent.js"
     if not consent_js.exists():
