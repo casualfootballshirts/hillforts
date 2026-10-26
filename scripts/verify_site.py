@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import html
 import json
+import re
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -115,6 +118,103 @@ def check_chrome(name, text):
     for snippet in BANNED:
         if snippet in text:
             errors += fail(f"{name} contains banned text: {snippet}")
+    return errors
+
+
+def hub_intro_words(text):
+    match = re.search(r'<div class="hub-intro">(.*?)</div>', text, re.S)
+    if not match:
+        return None
+    plain = html.unescape(re.sub(r"<[^>]+>", " ", match.group(1)))
+    return len(plain.split())
+
+
+def check_hubs(sites):
+    """County and nation hubs stay indexable, with original intros and visit lists."""
+    import hub_copy
+
+    errors = 0
+    by_county = defaultdict(list)
+    by_nation = defaultdict(list)
+    nation_names = {}
+    for site in sites:
+        by_county[site["countySlug"]].append(site)
+        by_nation[site["nation"]].append(site)
+        nation_names[site["nation"]] = site["country"]
+
+    titles = []
+    descriptions = []
+    hubs = []
+    for slug, group in by_nation.items():
+        hubs.append((DIST / "nations" / slug / "index.html", group, "nation", nation_names[slug], slug))
+    for slug, group in by_county.items():
+        hubs.append((
+            DIST / "counties" / slug / "index.html",
+            group,
+            "county",
+            group[0]["county"],
+            slug,
+        ))
+
+    for path, group, kind, name, slug in hubs:
+        if not path.exists():
+            errors += fail(f"missing hub {path}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        label = f"{kind} {slug}"
+        if 'content="index,follow"' not in text:
+            errors += fail(f"{label} should stay index,follow")
+        if 'data-mode="hub"' not in text or "<h2>Sites</h2>" not in text:
+            errors += fail(f"{label} missing map or site list")
+        if 'class="hub-stats"' not in text:
+            errors += fail(f"{label} missing stats")
+        if '"@type": "CollectionPage"' not in text:
+            errors += fail(f"{label} missing CollectionPage structured data")
+        words = hub_intro_words(text)
+        if words is None:
+            errors += fail(f"{label} missing intro")
+            continue
+        indexed_n = sum(1 for site in group if site.get("index"))
+        best = hub_copy.select_best(group, kind)
+        main = text.split("<main", 1)[1].split("</main>", 1)[0]
+        if re.search(r"\bindexed\b", main, re.I):
+            errors += fail(f"{label} uses the word indexed")
+        title = re.search(r"<title>(.*?)</title>", text)
+        description = re.search(r'<meta name="description" content="(.*?)">', text)
+        if not title or not description:
+            errors += fail(f"{label} missing title or description")
+        else:
+            titles.append(html.unescape(title.group(1)))
+            descriptions.append(html.unescape(description.group(1)))
+        if indexed_n >= hub_copy.FULL_INDEXED_MIN:
+            lo, hi = hub_copy.WORD_FULL
+            if not (lo <= words <= hi):
+                errors += fail(f"{label} intro is {words} words, expected {lo}–{hi}")
+            if "Best hillforts to visit" not in text:
+                errors += fail(f"{label} missing best-hillforts list")
+            if '"@type": "ItemList"' not in text:
+                errors += fail(f"{label} missing ItemList structured data")
+            hrefs = re.findall(r'<ol class="best-list">.*?</ol>', text, re.S)
+            found = re.findall(r'href="/sites/([^"]+)/"', hrefs[0]) if hrefs else []
+            expected = [site["slug"] for site in best]
+            if found != expected:
+                errors += fail(f"{label} best list {found} != {expected}")
+        else:
+            if words >= hub_copy.WORD_FULL[0] or words < 20:
+                errors += fail(f"{label} short intro is {words} words")
+            if "Best hillforts to visit" in text or '"@type": "ItemList"' in text:
+                errors += fail(f"{label} should not have a best-hillforts list")
+        if kind == "county" and f'data-county="{html.escape(name, quote=True)}"' not in text:
+            errors += fail(f"{label} map is not limited to {name}")
+        if kind == "nation" and f'data-country="{html.escape(name, quote=True)}"' not in text:
+            errors += fail(f"{label} map is not limited to {name}")
+
+    if len(titles) != len(set(titles)):
+        errors += fail("duplicate hub titles")
+    if len(descriptions) != len(set(descriptions)):
+        errors += fail("duplicate hub descriptions")
+    if len(hubs) != 6 + len(by_county):
+        errors += fail("hub count mismatch")
     return errors
 
 
@@ -325,6 +425,8 @@ def main():
         ):
             if needle not in script:
                 errors += fail(f"consent.js missing {needle}")
+
+    errors += check_hubs(sites)
 
     if errors:
         print(f"{errors} checks failed")

@@ -101,7 +101,84 @@ h2 { font-size: 1.45rem; margin: 1.6rem 0 0.6rem; }
 h3 { font-size: 1.15rem; margin: 1.2rem 0 0.4rem; }
 
 .lede p { font-size: 1.08rem; max-width: 42rem; }
-.intro { max-width: 42rem; }
+.intro, .hub-intro p { max-width: 42rem; }
+
+.hub-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.6rem;
+  margin: 1.15rem 0 0.4rem;
+}
+
+.hub-stats div {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+}
+
+.hub-stats dt {
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hub-stats dd {
+  margin: 0.15rem 0 0;
+  font-family: Georgia, "Iowan Old Style", Palatino, serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.hub-stats dd span {
+  display: block;
+  margin-top: 0.2rem;
+  font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 450;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.best-list {
+  margin: 0;
+  padding-left: 1.35rem;
+}
+
+.best-list li {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  margin: 0 0 0.65rem;
+}
+
+.best-list li::marker {
+  font-family: Georgia, "Iowan Old Style", Palatino, serif;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.best-list a {
+  color: var(--ink);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.best-list a:hover { text-decoration: underline; }
+
+.best-size {
+  color: var(--muted);
+  font-size: 0.92rem;
+  white-space: nowrap;
+}
+
+.best-list p {
+  margin: 0.3rem 0 0;
+  max-width: 40rem;
+}
 
 .crumbs {
   display: flex;
