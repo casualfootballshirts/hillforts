@@ -22,6 +22,19 @@ CONSENT_STORAGE_KEY = "hillforts_consent"
 PRIVACY_EMAIL = "privacy@hillfortsmap.co.uk"
 POLICY_UPDATED = "26 October 2026"
 INFO_PAGES = ("about", "privacy", "cookies", "terms")
+HOME_TITLE = "Map of Hillforts in Britain and Ireland"
+PINNED_COUNTY_SLUG = "dorset"
+PINNED_FORT_SLUG = "en3598-maiden-castle-winterborne-st-martin"
+# Homepage county hubs. Counts follow where the best-to-visit lists are
+# deepest, and still leave a link into every nation.
+HIGHLIGHT_COUNTY_SLOTS = {
+    "scotland": 3,
+    "england": 4,
+    "wales": 2,
+    "republic-of-ireland": 1,
+    "northern-ireland": 1,
+    "isle-of-man": 1,
+}
 
 NATION_ORDER = [
     ("Scotland", "scotland"),
@@ -1046,6 +1059,108 @@ def write_info_pages(site_count: int) -> None:
     )
 
 
+def home_description(site_count: int) -> str:
+    return (
+        f"Interactive map of {comma(site_count)} hillforts across Britain and Ireland. "
+        "Browse by nation and county, or search the full directory."
+    )
+
+
+def _indexed_sites(sites) -> list:
+    return [site for site in sites if site.get("index")]
+
+
+def county_highlight_key(county) -> tuple:
+    import hub_copy
+
+    best = hub_copy.select_best(county["sites"], "county")
+    indexed = _indexed_sites(county["sites"])
+    if best:
+        strength = sum(hub_copy.visit_score(site) for site in best)
+        tier = 1
+    else:
+        strength = max((hub_copy.visit_score(site) for site in indexed), default=0.0)
+        tier = 0
+    return (-tier, -strength, -len(indexed), -len(county["sites"]), county["name"].lower())
+
+
+def highlight_counties(counties: dict) -> list:
+    """Flagship county hubs, spread across the nations.
+
+    Ranking uses the hub 'best to visit' list where a county has one, and
+    otherwise the strongest indexed hillfort. Every pick has an indexed fort
+    page. Dorset stays in the list even if the ranking shifts.
+    """
+    by_nation = defaultdict(list)
+    for county in counties.values():
+        if _indexed_sites(county["sites"]):
+            by_nation[county["nation"]].append(county)
+    chosen = []
+    for _name, nation in NATION_ORDER:
+        slots = HIGHLIGHT_COUNTY_SLOTS.get(nation, 0)
+        if slots <= 0:
+            continue
+        ranked = sorted(by_nation.get(nation, []), key=county_highlight_key)
+        picks = ranked[:slots]
+        pinned = next((county for county in ranked if county["slug"] == PINNED_COUNTY_SLUG), None)
+        if pinned is not None and pinned not in picks:
+            picks = ranked[: max(slots - 1, 0)]
+            picks.append(pinned)
+            picks.sort(key=county_highlight_key)
+        chosen.extend(picks)
+    return chosen
+
+
+def highlight_fort(county) -> dict | None:
+    """The county's leading visitable hillfort, or Maiden Castle in Dorset."""
+    import hub_copy
+
+    sites = county["sites"]
+    if county["slug"] == PINNED_COUNTY_SLUG:
+        pinned = next(
+            (site for site in sites if site.get("slug") == PINNED_FORT_SLUG and site.get("index")),
+            None,
+        )
+        if pinned is not None:
+            return pinned
+    best = hub_copy.select_best(sites, "county")
+    if best:
+        return best[0]
+    indexed = _indexed_sites(sites)
+    indexed.sort(key=lambda site: (-hub_copy.visit_score(site), site["name"].lower(), site["code"]))
+    return indexed[0] if indexed else None
+
+
+def highlight_forts(counties_picked: list) -> list:
+    forts = []
+    for county in counties_picked:
+        fort = highlight_fort(county)
+        if fort is not None and fort.get("index"):
+            forts.append(fort)
+    return forts
+
+
+def highlight_html(counties_picked, forts) -> str:
+    county_items = "".join(
+        f'<li><a href="/counties/{esc(county["slug"])}/">{esc(county["name"])}</a>'
+        f'<span>{esc(county["country"])}</span></li>'
+        for county in counties_picked
+    )
+    fort_items = "".join(
+        f'<li><a href="/sites/{esc(site["slug"])}/">{esc(site["name"])}</a>'
+        f'<span>{esc(site["county"])}</span></li>'
+        for site in forts
+    )
+    return (
+        '<div class="home-highlights">'
+        "<div><h2>Popular counties</h2>"
+        f'<ul class="county-grid home-counties">{county_items}</ul></div>'
+        "<div><h2>Notable hillforts to visit</h2>"
+        f'<ul class="county-grid home-forts">{fort_items}</ul></div>'
+        "</div>"
+    )
+
+
 def main():
     import hub_copy
 
@@ -1148,6 +1263,8 @@ def main():
             ),
         )
 
+    featured_counties = highlight_counties(counties)
+    featured_forts = highlight_forts(featured_counties)
     home = f"""<div class="wrap">
 <h1>Hillforts of Britain and Ireland</h1>
 <p class="intro">Hillforts Map is a directory of {comma(len(sites))} hillforts from the Atlas of Hillforts of Britain and Ireland. It covers Scotland, England, Wales, the Republic of Ireland, Northern Ireland, and the Isle of Man. The map clusters every record. Search here, or open a nation for its counties.</p>
@@ -1157,6 +1274,7 @@ def main():
 {FILTERS}
 <p class="count" data-count></p>
 <div id="map" class="map" data-mode="hub" data-scroll="1" role="region" aria-label="Map of all hillforts"></div>
+{highlight_html(featured_counties, featured_forts)}
 <h2>Matching sites</h2>
 <noscript><p class="note">The master map needs JavaScript. Nation and county pages list their sites without it.</p></noscript>
 <ul class="site-list" id="results" data-dynamic="1"></ul>
@@ -1164,8 +1282,8 @@ def main():
     write(
         DIST / "index.html",
         shell(
-            "Hillforts Map | Britain and Ireland",
-            f"A directory and clustered map of {comma(len(sites))} hillforts from the Atlas of Hillforts of Britain and Ireland.",
+            HOME_TITLE,
+            home_description(len(sites)),
             "index,follow",
             f"{BASE}/",
             home,

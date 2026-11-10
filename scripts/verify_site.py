@@ -238,6 +238,135 @@ def check_hubs(sites):
     return errors
 
 
+def section_hrefs(text, ul_class):
+    match = re.search(rf'<ul class="county-grid {ul_class}">(.*?)</ul>', text, re.S)
+    if not match:
+        return None
+    return re.findall(r'href="([^"]+)"', match.group(1))
+
+
+def check_home_highlights(sites, home, sitemap):
+    """Homepage highlights link only to indexable URLs that are in the sitemap."""
+    import build_site
+
+    errors = 0
+    title = re.search(r"<title>(.*?)</title>", home)
+    description = re.search(r'<meta name="description" content="(.*?)">', home)
+    og_title = re.search(r'<meta property="og:title" content="(.*?)">', home)
+    og_description = re.search(r'<meta property="og:description" content="(.*?)">', home)
+    expected_title = "Map of Hillforts in Britain and Ireland"
+    expected_description = (
+        "Interactive map of 4,147 hillforts across Britain and Ireland. "
+        "Browse by nation and county, or search the full directory."
+    )
+    if not title or html.unescape(title.group(1)) != expected_title:
+        errors += fail(f"homepage title is {title.group(1) if title else 'missing'}")
+    if not description or html.unescape(description.group(1)) != expected_description:
+        found = description.group(1) if description else "missing"
+        errors += fail(f"homepage description is {found}")
+    if not og_title or html.unescape(og_title.group(1)) != expected_title:
+        errors += fail("homepage og:title does not match the title")
+    if not og_description or html.unescape(og_description.group(1)) != expected_description:
+        errors += fail("homepage og:description does not match the description")
+    if expected_description != build_site.home_description(len(sites)):
+        errors += fail("homepage description helper drifted from the published wording")
+    if "search the full directory" in expected_description and 'type="search"' not in home:
+        errors += fail("homepage meta claims search but there is no search field")
+
+    start = home.find('<div class="home-highlights">')
+    end = home.find("<h2>Matching sites</h2>", start if start != -1 else 0)
+    if start == -1 or end == -1:
+        errors += fail("homepage missing highlights")
+        return errors
+    block = home[start:end]
+    for phrase in ("indexed", "noindex", "sitemap", "search console", "crawl"):
+        if phrase in block.lower():
+            errors += fail(f"homepage highlights contain meta text: {phrase}")
+
+    locs = set(re.findall(r"<loc>(.*?)</loc>", sitemap))
+    by_county = {}
+    by_slug = {}
+    for site in sites:
+        by_county.setdefault(site["countySlug"], []).append(site)
+        by_slug[site["slug"]] = site
+
+    county_hrefs = section_hrefs(home, "home-counties")
+    fort_hrefs = section_hrefs(home, "home-forts")
+    if not county_hrefs or not fort_hrefs:
+        errors += fail("homepage highlights missing county or fort links")
+        return errors
+
+    counties = {}
+    for site in sites:
+        bucket = counties.setdefault(site["countySlug"], {
+            "slug": site["countySlug"],
+            "name": site["county"],
+            "country": site["country"],
+            "nation": site["nation"],
+            "sites": [],
+        })
+        bucket["sites"].append(site)
+    expected_counties = [f"/counties/{county['slug']}/" for county in build_site.highlight_counties(counties)]
+    expected_forts = [
+        f"/sites/{site['slug']}/"
+        for site in build_site.highlight_forts(build_site.highlight_counties(counties))
+    ]
+    if county_hrefs != expected_counties:
+        errors += fail(f"homepage counties {county_hrefs} != {expected_counties}")
+    if fort_hrefs != expected_forts:
+        errors += fail(f"homepage forts {fort_hrefs} != {expected_forts}")
+    if "/counties/dorset/" not in county_hrefs:
+        errors += fail("homepage counties omit Dorset")
+    if "/sites/en3598-maiden-castle-winterborne-st-martin/" not in fort_hrefs:
+        errors += fail("homepage forts omit Maiden Castle")
+    if not (10 <= len(county_hrefs) <= 16) or not (10 <= len(fort_hrefs) <= 16):
+        errors += fail(f"homepage highlights expected about 12 links, got {len(county_hrefs)} counties and {len(fort_hrefs)} forts")
+
+    nations = set()
+    for href in county_hrefs:
+        slug = href.strip("/").split("/")[-1]
+        group = by_county.get(slug)
+        if not group:
+            errors += fail(f"homepage county link unknown: {href}")
+            continue
+        nations.add(group[0]["nation"])
+        url = f"https://hillfortsmap.co.uk{href}"
+        if url not in locs:
+            errors += fail(f"homepage county not in sitemap: {href}")
+        page = DIST / "counties" / slug / "index.html"
+        if not page.exists():
+            errors += fail(f"homepage county page missing: {href}")
+        elif 'content="index,follow"' not in page.read_text(encoding="utf-8"):
+            errors += fail(f"homepage county is not indexable: {href}")
+    if len(nations) < 6:
+        errors += fail(f"homepage counties miss a nation: {sorted(nations)}")
+
+    for href in fort_hrefs:
+        if not href.startswith("/sites/") or not href.endswith("/"):
+            errors += fail(f"homepage fort link is not a site page: {href}")
+            continue
+        slug = href.strip("/").split("/")[-1]
+        site = by_slug.get(slug)
+        if site is None:
+            errors += fail(f"homepage fort link unknown: {href}")
+            continue
+        if not site.get("index"):
+            errors += fail(f"homepage fort is a noindexed tail page: {href}")
+        url = f"https://hillfortsmap.co.uk{href}"
+        if url not in locs:
+            errors += fail(f"homepage fort not in sitemap: {href}")
+        page = DIST / "sites" / slug / "index.html"
+        if not page.exists():
+            errors += fail(f"homepage fort page missing: {href}")
+            continue
+        page_html = page.read_text(encoding="utf-8")
+        if 'content="index,follow"' not in page_html:
+            errors += fail(f"homepage fort page is not indexable: {href}")
+        if 'content="noindex,follow"' in page_html:
+            errors += fail(f"homepage fort page is noindex: {href}")
+    return errors
+
+
 def main():
     errors = 0
     sites = json.loads(SITES.read_text(encoding="utf-8"))
@@ -341,6 +470,7 @@ def main():
 
     if "data-mode=\"hub\"" not in home or "markercluster" not in home.lower() and "leaflet.markercluster.js" not in home:
         errors += fail("home map assets missing")
+    errors += check_home_highlights(sites, home, sitemap)
     if "data-mode=\"site\"" not in indexed_html:
         errors += fail("site map missing")
     if "Cornwall" not in county:
