@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 DATA = ROOT / "data" / "sites.json"
 ACCESS = ROOT / "data" / "access.json"
+PHOTOS = ROOT / "data" / "photos.json"
 DIST = ROOT / "dist"
 BASE = "https://hillfortsmap.co.uk"
 GA_MEASUREMENT_ID = "G-3QGXKPZ9XK"
@@ -625,13 +626,16 @@ def cookie_banner() -> str:
 </div>"""
 
 
-def shell(title, description, robots, canonical, body, active=None, json_ld=None, include_map=True) -> str:
+def shell(title, description, robots, canonical, body, active=None, json_ld=None, include_map=True, og_image=None, og_alt=None) -> str:
     ld = ""
     if json_ld:
         payload = json.dumps(json_ld, ensure_ascii=False).replace("<", "\\u003c")
         ld = f'<script type="application/ld+json">{payload}</script>'
     map_head = ""
     map_scripts = ""
+    image = og_image or f"{BASE}/assets/og.png"
+    image_alt = og_alt or "Hillforts Map"
+    twitter_image = f'\n<meta name="twitter:image" content="{esc(image)}">' if og_image else ""
     if include_map:
         map_head = """<link rel="stylesheet" href="/assets/vendor/leaflet.css">
 <link rel="stylesheet" href="/assets/vendor/MarkerCluster.css">
@@ -656,9 +660,9 @@ def shell(title, description, robots, canonical, body, active=None, json_ld=None
 <meta property="og:description" content="{esc(description)}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="{esc(canonical)}">
-<meta property="og:image" content="{BASE}/assets/og.png">
-<meta property="og:image:alt" content="Hillforts Map">
-<meta name="twitter:card" content="summary_large_image">
+<meta property="og:image" content="{esc(image)}">
+<meta property="og:image:alt" content="{esc(image_alt)}">
+<meta name="twitter:card" content="summary_large_image">{twitter_image}
 {map_head}
 <link rel="stylesheet" href="/assets/site.css">
 {ld}
@@ -854,7 +858,36 @@ def getting_there(site, record, neighbors) -> str:
     return "".join(parts)
 
 
-def site_page(site, access, neighbors) -> str:
+def render_photo(site, photo) -> str:
+    slug = site["slug"]
+    alt = f"{site['name']} hillfort"
+    wide_w = int(photo["wideWidth"])
+    wide_h = int(photo["wideHeight"])
+    src = f"/assets/photos/{slug}-1200.webp"
+    narrow_w = int(photo.get("narrowWidth") or 0)
+    srcset = ""
+    if narrow_w:
+        narrow = f"/assets/photos/{slug}-600.webp"
+        srcset = (
+            f' srcset="{narrow} {narrow_w}w, {src} {wide_w}w"'
+            ' sizes="(max-width: 736px) 100vw, 736px"'
+        )
+    author = photo.get("author") or "Unknown"
+    caption = (
+        f'Photo: {esc(author)}, '
+        f'<a href="{esc(photo["licenceUrl"])}" rel="noopener noreferrer">{esc(photo["licence"])}</a>, '
+        f'via <a href="{esc(photo["page"])}" rel="noopener noreferrer">{esc(photo["via"])}</a>'
+    )
+    return (
+        '<figure class="fort-photo">'
+        f'<img src="{src}"{srcset} width="{wide_w}" height="{wide_h}" '
+        f'alt="{esc(alt)}" loading="lazy" decoding="async">'
+        f"<figcaption>{caption}</figcaption>"
+        "</figure>"
+    )
+
+
+def site_page(site, access, neighbors, photo=None) -> str:
     indexed = bool(site.get("index"))
     robots = "index,follow" if indexed else "noindex,follow"
     crumbs = (
@@ -871,6 +904,9 @@ def site_page(site, access, neighbors) -> str:
         description = paragraphs[0]
         if len(description) > 180:
             description = description[:177].rstrip() + "..."
+    photo_html = ""
+    og_image = None
+    og_alt = None
     json_ld = None
     if indexed:
         json_ld = {
@@ -889,10 +925,16 @@ def site_page(site, access, neighbors) -> str:
                 "addressCountry": "IE" if site["country"] == "Republic of Ireland" else ("IM" if site["country"] == "Isle of Man" else "GB"),
             },
         }
+        if photo:
+            photo_html = render_photo(site, photo)
+            og_image = f"{BASE}/assets/photos/{site['slug']}-1200.webp"
+            og_alt = f"{site['name']} hillfort"
+            json_ld["image"] = og_image
     body = f"""<div class="wrap">
 {crumbs}
 <h1>{esc(site["name"])}</h1>
 <p class="meta">{esc(site.get("county") or "")}, {esc(site.get("country") or "")} · Atlas {esc(site["code"])}</p>
+{photo_html}
 {lede}
 <div class="layout">
 <article class="panel">{render_facts(site)}{getting_there(site, access, neighbors)}{render_links(site)}{render_refs(site)}</article>
@@ -902,7 +944,17 @@ def site_page(site, access, neighbors) -> str:
 </div>
 </div>"""
     title = f"{site['name']}, {site.get('county')} | Hillforts Map"
-    return shell(title, description, robots, f"{BASE}/sites/{site['slug']}/", body, active=site["nation"], json_ld=json_ld)
+    return shell(
+        title,
+        description,
+        robots,
+        f"{BASE}/sites/{site['slug']}/",
+        body,
+        active=site["nation"],
+        json_ld=json_ld,
+        og_image=og_image,
+        og_alt=og_alt,
+    )
 
 
 def hub_page(title, description, canonical, active, intro, extra, country, county, items, json_ld=None) -> str:
@@ -1193,11 +1245,22 @@ def main():
     if not ACCESS.exists():
         raise SystemExit("data/access.json is missing. Run scripts/fetch_osm_access.py once and commit it.")
     access = json.loads(ACCESS.read_text(encoding="utf-8"))
+    photos = {}
+    if PHOTOS.exists():
+        photos = json.loads(PHOTOS.read_text(encoding="utf-8"))
+    photo_dir = SRC / "assets" / "photos"
+    for slug, photo in photos.items():
+        wide = photo_dir / f"{slug}-1200.webp"
+        if not wide.is_file():
+            raise SystemExit(f"missing photo {wide}")
+        if int(photo.get("narrowWidth") or 0) and not (photo_dir / f"{slug}-600.webp").is_file():
+            raise SystemExit(f"missing smaller photo for {slug}")
     neighbors = nearest_hillforts(sites)
     for site in sites:
+        photo = photos.get(site["slug"]) if site.get("index") else None
         write(
             DIST / "sites" / site["slug"] / "index.html",
-            site_page(site, access.get(site["slug"]), neighbors.get(site["slug"])),
+            site_page(site, access.get(site["slug"]), neighbors.get(site["slug"]), photo),
         )
 
     nation_cards = []
