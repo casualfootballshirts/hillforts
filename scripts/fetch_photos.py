@@ -67,6 +67,15 @@ DUMP_GEO = "https://data.geograph.org.uk/dumps/gridimage_geo.tsv.gz"
 
 PHOTO_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/tiff"}
 BUSY = {"EN0005", "EN0406", "EN3598", "EN3775"}
+# Simon's review of the contact sheet. These stay without a photo.
+# EN3598 Maiden Castle keeps its 1935 aerial.
+REJECTED = {
+    "EN0001", "EN0005", "EN0076", "EN0090", "EN0091", "EN0406", "EN0416",
+    "EN0420", "EN0441", "EN0462", "EN0609", "EN0625", "EN0626", "EN0773",
+    "EN0774", "EN1001", "EN2576", "EN3135", "EN3183", "EN3774", "EN3775",
+    "EN3885", "EN3975", "EN4043", "IOM3220", "NI0805", "NI0806", "SC2185",
+    "SC2220", "SC2824", "SC2840", "SC3045", "WA1269",
+}
 CONTAINERS = {
     "skye", "mull", "mainland", "islay", "jura", "arran", "orkney", "shetland",
     "lewis", "harris", "iona", "rum", "eigg", "uist", "benbecula", "barra",
@@ -1201,6 +1210,11 @@ def run(args):
         chosen = resolve(lists)
 
     by_slug = {fort["slug"]: fort for fort in forts}
+    chosen = {
+        slug: candidate
+        for slug, candidate in chosen.items()
+        if by_slug[slug]["code"] not in REJECTED
+    }
     flags = {}
     for slug, candidate in chosen.items():
         reasons = review_flags(by_slug[slug], candidate, forts)
