@@ -23,6 +23,19 @@ CONSENT_STORAGE_KEY = "hillforts_consent"
 PRIVACY_EMAIL = "privacy@hillfortsmap.co.uk"
 POLICY_UPDATED = "26 October 2026"
 INFO_PAGES = ("about", "privacy", "cookies", "terms")
+HOME_TITLE = "Map of Hillforts in Britain and Ireland"
+PINNED_COUNTY_SLUG = "dorset"
+PINNED_FORT_SLUG = "en3598-maiden-castle-winterborne-st-martin"
+# Homepage county hubs. Counts follow where the best-to-visit lists are
+# deepest, and still leave a link into every nation.
+HIGHLIGHT_COUNTY_SLOTS = {
+    "scotland": 3,
+    "england": 4,
+    "wales": 2,
+    "republic-of-ireland": 1,
+    "northern-ireland": 1,
+    "isle-of-man": 1,
+}
 
 NATION_ORDER = [
     ("Scotland", "scotland"),
@@ -557,7 +570,7 @@ def fact_rows(site):
 
 
 def attribution() -> str:
-    return """<footer class="site-footer"><div class="wrap"><nav class="footer-nav" aria-label="Information"><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/cookies/">Cookies</a><a href="/terms/">Terms</a><button type="button" class="cookie-settings" data-cookie-settings>Cookie settings</button></nav><p>Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland. <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>. <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. Licence <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.</p></div></footer>"""
+    return """<footer class="site-footer"><div class="wrap"><nav class="footer-nav" aria-label="Information"><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/cookies/">Cookies</a><a href="/terms/">Terms</a><button type="button" class="cookie-settings" data-cookie-settings>Cookie settings</button></nav><p>Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland. <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>. <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. Licence <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Map data and access notes &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, <a href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL</a>.</p></div></footer>"""
 
 
 def header(active=None) -> str:
@@ -712,15 +725,23 @@ def list_item(site) -> str:
     )
 
 
+METRES_PER_MILE = 1609.344
+YARDS_PER_METRE = 1 / 0.9144
+# Yards under about a quarter of a mile. The cutoff is 0.3 miles so a walk
+# of roughly 400–480 metres stays in yards rather than reading as "0.3 miles".
+YARD_LIMIT_METRES = 0.3 * METRES_PER_MILE
+
+
 def travel_distance(metres) -> str:
     metres = int(metres)
-    if metres < 950:
-        rounded = max(10, int(round(metres / 10.0) * 10))
-        return f"{rounded} m"
-    text = f"{metres / 1000:.1f}"
+    if metres < YARD_LIMIT_METRES:
+        yards = max(10, int(round(metres * YARDS_PER_METRE / 10.0) * 10))
+        return f"{yards} yards"
+    text = f"{metres / METRES_PER_MILE:.1f}"
     if text.endswith(".0"):
         text = text[:-2]
-    return f"{text} km"
+    unit = "mile" if text == "1" else "miles"
+    return f"{text} {unit}"
 
 
 def compass(lat1, lon1, lat2, lon2) -> str:
@@ -785,57 +806,56 @@ def nearest_hillforts(sites):
 WAY_PHRASE = {
     "public-footpath": "public footpath",
     "public-bridleway": "public bridleway",
-    "footway": "footway",
+    "footway": "footpath",
     "path": "path",
     "track": "track",
 }
 
 
 def getting_there(site, record, neighbors) -> str:
+    record = record or {}
     items = []
-    for park in (record or {}).get("parking") or []:
+    for index, park in enumerate(record.get("parking") or []):
         bearing = compass(site["lat"], site["lon"], park["lat"], park["lon"])
         distance = travel_distance(park["metres"])
-        name = park.get("name") or ""
+        label = "Nearest car park" if index == 0 else "Next closest car park"
+        name = (park.get("name") or "").strip()
         if name:
-            sentence = f"OpenStreetMap shows the car park {name}, {distance} to the {bearing}."
+            sentence = f"{label}: {name}, {distance} to the {bearing}."
         else:
-            sentence = f"OpenStreetMap shows a car park {distance} to the {bearing}."
+            sentence = f"{label}: {distance} to the {bearing}."
         url = f"https://www.google.com/maps/dir/?api=1&destination={park['lat']:.5f},{park['lon']:.5f}"
         items.append(
             f"<li>{esc(sentence)} <a href=\"{esc(url)}\" rel=\"noopener noreferrer\">Directions</a></li>"
         )
-    way = (record or {}).get("way")
+    way = record.get("way")
     if way and way.get("kind") in WAY_PHRASE:
         noun = WAY_PHRASE[way["kind"]]
         distance = travel_distance(way["metres"])
-        name = way.get("name") or ""
+        name = (way.get("name") or "").strip()
         if name:
-            sentence = f"OpenStreetMap shows the {noun} {name} passing within {distance}."
+            sentence = f"Closest {noun}: {name}, within {distance}."
         else:
-            sentence = f"OpenStreetMap shows a {noun} passing within {distance}."
+            sentence = f"Closest {noun}: within {distance}."
         items.append(f"<li>{esc(sentence)}</li>")
-    place = (record or {}).get("place")
+    place = record.get("place")
     if place and place.get("name") and place.get("kind") in {"town", "village"}:
         bearing = compass(site["lat"], site["lon"], place["lat"], place["lon"])
         distance = travel_distance(place["metres"])
-        sentence = (
-            f"The nearest {place['kind']} on OpenStreetMap is {place['name']}, "
-            f"{distance} to the {bearing}."
-        )
+        sentence = f"Nearest {place['kind']}: {place['name']}, {distance} to the {bearing}."
         items.append(f"<li>{esc(sentence)}</li>")
-    for position, other in enumerate(neighbors or []):
-        link = f'<a href="/sites/{esc(other["slug"])}/">{esc(other["name"])}</a>'
-        distance = esc(travel_distance(other["metres"]))
-        bearing = esc(other["bearing"])
-        if position == 0:
-            sentence = f"The nearest other hillfort is {link}, {distance} to the {bearing}."
-        else:
-            sentence = f"{link} is {distance} to the {bearing}."
-        items.append(f'<li class="nearby-fort">{sentence}</li>')
-    if not items:
-        return ""
-    return f"<h3>Getting there</h3><ul class=\"getting-there\">{''.join(items)}</ul>"
+    parts = []
+    if items:
+        parts.append(f"<h3>Getting there</h3><ul class=\"getting-there\">{''.join(items)}</ul>")
+    if neighbors:
+        entries = []
+        for other in neighbors:
+            link = f'<a href="/sites/{esc(other["slug"])}/">{esc(other["name"])}</a>'
+            distance = esc(travel_distance(other["metres"]))
+            bearing = esc(other["bearing"])
+            entries.append(f'<li class="nearby-fort">{link} is {distance} to the {bearing}.</li>')
+        parts.append(f"<h3>Other hill forts nearby</h3><ul class=\"nearby-forts\">{''.join(entries)}</ul>")
+    return "".join(parts)
 
 
 def render_photo(site, photo) -> str:
@@ -1066,7 +1086,7 @@ def write_info_pages(site_count: int) -> None:
 <h2>Data licence</h2>
 <p>The underlying records come from Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland, <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>, <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. They are used under the Creative Commons Attribution-ShareAlike 4.0 International licence (CC BY-SA 4.0): <a href="https://creativecommons.org/licenses/by-sa/4.0/">https://creativecommons.org/licenses/by-sa/4.0/</a>.</p>
 <p>This site is shared under the same licence. If you share or adapt material from it that is covered by that licence, give appropriate credit, link to the licence, and distribute your adaptation under the same licence. A suitable credit line is: Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland.</p>
-<p>Map tiles are loaded from OpenStreetMap. Map data is &copy; OpenStreetMap contributors.</p>
+<p>Map tiles are loaded from OpenStreetMap. Map data and access notes are &copy; OpenStreetMap contributors, under the <a href="https://opendatacommons.org/licenses/odbl/1-0/">Open Database Licence</a> (ODbL).</p>
 <h2>Using the website</h2>
 <p>You may browse the site freely. Do not disrupt it, and do not put an unreasonable load on it or on the OpenStreetMap tile servers the maps use.</p>
 <h2>Changes</h2>
@@ -1095,6 +1115,108 @@ def write_info_pages(site_count: int) -> None:
         "Terms of use",
         "Terms of use for Hillforts Map, including the disclaimer, visiting, and the CC BY-SA data licence.",
         terms,
+    )
+
+
+def home_description(site_count: int) -> str:
+    return (
+        f"Interactive map of {comma(site_count)} hillforts across Britain and Ireland. "
+        "Browse by nation and county, or search the full directory."
+    )
+
+
+def _indexed_sites(sites) -> list:
+    return [site for site in sites if site.get("index")]
+
+
+def county_highlight_key(county) -> tuple:
+    import hub_copy
+
+    best = hub_copy.select_best(county["sites"], "county")
+    indexed = _indexed_sites(county["sites"])
+    if best:
+        strength = sum(hub_copy.visit_score(site) for site in best)
+        tier = 1
+    else:
+        strength = max((hub_copy.visit_score(site) for site in indexed), default=0.0)
+        tier = 0
+    return (-tier, -strength, -len(indexed), -len(county["sites"]), county["name"].lower())
+
+
+def highlight_counties(counties: dict) -> list:
+    """Flagship county hubs, spread across the nations.
+
+    Ranking uses the hub 'best to visit' list where a county has one, and
+    otherwise the strongest indexed hillfort. Every pick has an indexed fort
+    page. Dorset stays in the list even if the ranking shifts.
+    """
+    by_nation = defaultdict(list)
+    for county in counties.values():
+        if _indexed_sites(county["sites"]):
+            by_nation[county["nation"]].append(county)
+    chosen = []
+    for _name, nation in NATION_ORDER:
+        slots = HIGHLIGHT_COUNTY_SLOTS.get(nation, 0)
+        if slots <= 0:
+            continue
+        ranked = sorted(by_nation.get(nation, []), key=county_highlight_key)
+        picks = ranked[:slots]
+        pinned = next((county for county in ranked if county["slug"] == PINNED_COUNTY_SLUG), None)
+        if pinned is not None and pinned not in picks:
+            picks = ranked[: max(slots - 1, 0)]
+            picks.append(pinned)
+            picks.sort(key=county_highlight_key)
+        chosen.extend(picks)
+    return chosen
+
+
+def highlight_fort(county) -> dict | None:
+    """The county's leading visitable hillfort, or Maiden Castle in Dorset."""
+    import hub_copy
+
+    sites = county["sites"]
+    if county["slug"] == PINNED_COUNTY_SLUG:
+        pinned = next(
+            (site for site in sites if site.get("slug") == PINNED_FORT_SLUG and site.get("index")),
+            None,
+        )
+        if pinned is not None:
+            return pinned
+    best = hub_copy.select_best(sites, "county")
+    if best:
+        return best[0]
+    indexed = _indexed_sites(sites)
+    indexed.sort(key=lambda site: (-hub_copy.visit_score(site), site["name"].lower(), site["code"]))
+    return indexed[0] if indexed else None
+
+
+def highlight_forts(counties_picked: list) -> list:
+    forts = []
+    for county in counties_picked:
+        fort = highlight_fort(county)
+        if fort is not None and fort.get("index"):
+            forts.append(fort)
+    return forts
+
+
+def highlight_html(counties_picked, forts) -> str:
+    county_items = "".join(
+        f'<li><a href="/counties/{esc(county["slug"])}/">{esc(county["name"])}</a>'
+        f'<span>{esc(county["country"])}</span></li>'
+        for county in counties_picked
+    )
+    fort_items = "".join(
+        f'<li><a href="/sites/{esc(site["slug"])}/">{esc(site["name"])}</a>'
+        f'<span>{esc(site["county"])}</span></li>'
+        for site in forts
+    )
+    return (
+        '<div class="home-highlights">'
+        "<div><h2>Popular counties</h2>"
+        f'<ul class="county-grid home-counties">{county_items}</ul></div>'
+        "<div><h2>Notable hillforts to visit</h2>"
+        f'<ul class="county-grid home-forts">{fort_items}</ul></div>'
+        "</div>"
     )
 
 
@@ -1211,6 +1333,8 @@ def main():
             ),
         )
 
+    featured_counties = highlight_counties(counties)
+    featured_forts = highlight_forts(featured_counties)
     home = f"""<div class="wrap">
 <h1>Hillforts of Britain and Ireland</h1>
 <p class="intro">Hillforts Map is a directory of {comma(len(sites))} hillforts from the Atlas of Hillforts of Britain and Ireland. It covers Scotland, England, Wales, the Republic of Ireland, Northern Ireland, and the Isle of Man. The map clusters every record. Search here, or open a nation for its counties.</p>
@@ -1220,6 +1344,7 @@ def main():
 {FILTERS}
 <p class="count" data-count></p>
 <div id="map" class="map" data-mode="hub" data-scroll="1" role="region" aria-label="Map of all hillforts"></div>
+{highlight_html(featured_counties, featured_forts)}
 <h2>Matching sites</h2>
 <noscript><p class="note">The master map needs JavaScript. Nation and county pages list their sites without it.</p></noscript>
 <ul class="site-list" id="results" data-dynamic="1"></ul>
@@ -1227,8 +1352,8 @@ def main():
     write(
         DIST / "index.html",
         shell(
-            "Hillforts Map | Britain and Ireland",
-            f"A directory and clustered map of {comma(len(sites))} hillforts from the Atlas of Hillforts of Britain and Ireland.",
+            HOME_TITLE,
+            home_description(len(sites)),
             "index,follow",
             f"{BASE}/",
             home,

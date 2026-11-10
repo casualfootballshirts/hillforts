@@ -348,6 +348,135 @@ def urllib_host(url):
     return match.group(1) if match else ""
 
 
+def section_hrefs(text, ul_class):
+    match = re.search(rf'<ul class="county-grid {ul_class}">(.*?)</ul>', text, re.S)
+    if not match:
+        return None
+    return re.findall(r'href="([^"]+)"', match.group(1))
+
+
+def check_home_highlights(sites, home, sitemap):
+    """Homepage highlights link only to indexable URLs that are in the sitemap."""
+    import build_site
+
+    errors = 0
+    title = re.search(r"<title>(.*?)</title>", home)
+    description = re.search(r'<meta name="description" content="(.*?)">', home)
+    og_title = re.search(r'<meta property="og:title" content="(.*?)">', home)
+    og_description = re.search(r'<meta property="og:description" content="(.*?)">', home)
+    expected_title = "Map of Hillforts in Britain and Ireland"
+    expected_description = (
+        "Interactive map of 4,147 hillforts across Britain and Ireland. "
+        "Browse by nation and county, or search the full directory."
+    )
+    if not title or html.unescape(title.group(1)) != expected_title:
+        errors += fail(f"homepage title is {title.group(1) if title else 'missing'}")
+    if not description or html.unescape(description.group(1)) != expected_description:
+        found = description.group(1) if description else "missing"
+        errors += fail(f"homepage description is {found}")
+    if not og_title or html.unescape(og_title.group(1)) != expected_title:
+        errors += fail("homepage og:title does not match the title")
+    if not og_description or html.unescape(og_description.group(1)) != expected_description:
+        errors += fail("homepage og:description does not match the description")
+    if expected_description != build_site.home_description(len(sites)):
+        errors += fail("homepage description helper drifted from the published wording")
+    if "search the full directory" in expected_description and 'type="search"' not in home:
+        errors += fail("homepage meta claims search but there is no search field")
+
+    start = home.find('<div class="home-highlights">')
+    end = home.find("<h2>Matching sites</h2>", start if start != -1 else 0)
+    if start == -1 or end == -1:
+        errors += fail("homepage missing highlights")
+        return errors
+    block = home[start:end]
+    for phrase in ("indexed", "noindex", "sitemap", "search console", "crawl"):
+        if phrase in block.lower():
+            errors += fail(f"homepage highlights contain meta text: {phrase}")
+
+    locs = set(re.findall(r"<loc>(.*?)</loc>", sitemap))
+    by_county = {}
+    by_slug = {}
+    for site in sites:
+        by_county.setdefault(site["countySlug"], []).append(site)
+        by_slug[site["slug"]] = site
+
+    county_hrefs = section_hrefs(home, "home-counties")
+    fort_hrefs = section_hrefs(home, "home-forts")
+    if not county_hrefs or not fort_hrefs:
+        errors += fail("homepage highlights missing county or fort links")
+        return errors
+
+    counties = {}
+    for site in sites:
+        bucket = counties.setdefault(site["countySlug"], {
+            "slug": site["countySlug"],
+            "name": site["county"],
+            "country": site["country"],
+            "nation": site["nation"],
+            "sites": [],
+        })
+        bucket["sites"].append(site)
+    expected_counties = [f"/counties/{county['slug']}/" for county in build_site.highlight_counties(counties)]
+    expected_forts = [
+        f"/sites/{site['slug']}/"
+        for site in build_site.highlight_forts(build_site.highlight_counties(counties))
+    ]
+    if county_hrefs != expected_counties:
+        errors += fail(f"homepage counties {county_hrefs} != {expected_counties}")
+    if fort_hrefs != expected_forts:
+        errors += fail(f"homepage forts {fort_hrefs} != {expected_forts}")
+    if "/counties/dorset/" not in county_hrefs:
+        errors += fail("homepage counties omit Dorset")
+    if "/sites/en3598-maiden-castle-winterborne-st-martin/" not in fort_hrefs:
+        errors += fail("homepage forts omit Maiden Castle")
+    if not (10 <= len(county_hrefs) <= 16) or not (10 <= len(fort_hrefs) <= 16):
+        errors += fail(f"homepage highlights expected about 12 links, got {len(county_hrefs)} counties and {len(fort_hrefs)} forts")
+
+    nations = set()
+    for href in county_hrefs:
+        slug = href.strip("/").split("/")[-1]
+        group = by_county.get(slug)
+        if not group:
+            errors += fail(f"homepage county link unknown: {href}")
+            continue
+        nations.add(group[0]["nation"])
+        url = f"https://hillfortsmap.co.uk{href}"
+        if url not in locs:
+            errors += fail(f"homepage county not in sitemap: {href}")
+        page = DIST / "counties" / slug / "index.html"
+        if not page.exists():
+            errors += fail(f"homepage county page missing: {href}")
+        elif 'content="index,follow"' not in page.read_text(encoding="utf-8"):
+            errors += fail(f"homepage county is not indexable: {href}")
+    if len(nations) < 6:
+        errors += fail(f"homepage counties miss a nation: {sorted(nations)}")
+
+    for href in fort_hrefs:
+        if not href.startswith("/sites/") or not href.endswith("/"):
+            errors += fail(f"homepage fort link is not a site page: {href}")
+            continue
+        slug = href.strip("/").split("/")[-1]
+        site = by_slug.get(slug)
+        if site is None:
+            errors += fail(f"homepage fort link unknown: {href}")
+            continue
+        if not site.get("index"):
+            errors += fail(f"homepage fort is a noindexed tail page: {href}")
+        url = f"https://hillfortsmap.co.uk{href}"
+        if url not in locs:
+            errors += fail(f"homepage fort not in sitemap: {href}")
+        page = DIST / "sites" / slug / "index.html"
+        if not page.exists():
+            errors += fail(f"homepage fort page missing: {href}")
+            continue
+        page_html = page.read_text(encoding="utf-8")
+        if 'content="index,follow"' not in page_html:
+            errors += fail(f"homepage fort page is not indexable: {href}")
+        if 'content="noindex,follow"' in page_html:
+            errors += fail(f"homepage fort page is noindex: {href}")
+    return errors
+
+
 def main():
     errors = 0
     sites = json.loads(SITES.read_text(encoding="utf-8"))
@@ -453,6 +582,7 @@ def main():
 
     if "data-mode=\"hub\"" not in home or "markercluster" not in home.lower() and "leaflet.markercluster.js" not in home:
         errors += fail("home map assets missing")
+    errors += check_home_highlights(sites, home, sitemap)
     if "data-mode=\"site\"" not in indexed_html:
         errors += fail("site map missing")
     if "Cornwall" not in county:
@@ -579,12 +709,35 @@ def main():
     if set(access) != {site["slug"] for site in sites}:
         errors += fail("access.json slugs do not match sites.json")
     banned_access = ("no data", "No car park", "legal access", "you can walk", "right to visit")
+    nearby_line = re.compile(
+        r" is \d+(?:\.\d+)? (?:mile|miles|yards) to the "
+        r"(?:north|north-east|east|south-east|south|south-west|west|north-west)\.$"
+    )
+    metric_distance = re.compile(r"\b\d+(?:\.\d+)? (?:m|km)\b", re.I)
     parking_checked = way_checked = bare_checked = 0
     for site in sites:
         text = (DIST / "sites" / site["slug"] / "index.html").read_text(encoding="utf-8")
         record = access.get(site["slug"]) or {}
-        if text.count('class="nearby-fort"') != 5:
+        main = text.split("<main", 1)[-1].split("</main>", 1)[0]
+        if "<h3>Other hill forts nearby</h3>" not in text:
+            errors += fail(f"{site['code']} missing Other hill forts nearby")
+            break
+        nearby = re.findall(r'<li class="nearby-fort">(.*?)</li>', text)
+        if len(nearby) != 5:
             errors += fail(f"{site['code']} should list five nearby hillforts")
+            break
+        nearby_ok = True
+        for item in nearby:
+            plain = html.unescape(re.sub(r"<[^>]+>", "", item))
+            if not nearby_line.search(plain):
+                errors += fail(f"{site['code']} nearby line is not 'Name is distance to the bearing': {plain}")
+                nearby_ok = False
+                break
+            if 'href="/sites/' not in item:
+                errors += fail(f"{site['code']} nearby fort is missing its page link")
+                nearby_ok = False
+                break
+        if not nearby_ok:
             break
         if "<h3>Getting there</h3>" not in text:
             errors += fail(f"{site['code']} missing Getting there")
@@ -593,32 +746,92 @@ def main():
             if phrase in text:
                 errors += fail(f"{site['code']} contains {phrase}")
                 break
-        if record.get("parking"):
-            if parking_checked < 3:
-                if "car park" not in text or "https://www.google.com/maps/dir/?api=1&amp;destination=" not in text:
-                    errors += fail(f"{site['code']} missing a car park directions link")
-                parking_checked += 1
+        if "OpenStreetMap shows" in main or "on OpenStreetMap" in main:
+            errors += fail(f"{site['code']} still attributes OpenStreetMap in the page body")
+            break
+        metric_ok = True
+        for chunk in re.findall(r'<ul class="(?:getting-there|nearby-forts)">(.*?)</ul>', text, re.S):
+            plain = html.unescape(re.sub(r"<[^>]+>", " ", chunk))
+            if metric_distance.search(plain):
+                errors += fail(f"{site['code']} still uses a metric distance: {plain.strip()[:180]}")
+                metric_ok = False
+                break
+        if not metric_ok:
+            break
+        parks = record.get("parking") or []
+        directions = text.count("https://www.google.com/maps/dir/?api=1&amp;destination=")
+        if directions != len(parks):
+            errors += fail(f"{site['code']} has {directions} directions links for {len(parks)} car parks")
+            break
+        if parks:
+            if "Nearest car park:" not in text:
+                errors += fail(f"{site['code']} missing Nearest car park")
+                break
+            if len(parks) > 1 and "Next closest car park:" not in text:
+                errors += fail(f"{site['code']} missing Next closest car park")
+                break
+            parking_checked += 1
         elif "car park" in text:
             errors += fail(f"{site['code']} mentions a car park without a cached one")
             break
         else:
             bare_checked += 1
+        getting = re.search(r'<ul class="getting-there">(.*?)</ul>', text, re.S)
+        getting_html = getting.group(1) if getting else ""
         way = record.get("way") or {}
         if way.get("kind"):
-            if way_checked < 3:
-                if "OpenStreetMap shows a " not in text and "OpenStreetMap shows the " not in text:
-                    errors += fail(f"{site['code']} missing a careful path sentence")
-                if "passing within" not in text:
-                    errors += fail(f"{site['code']} path sentence is not distance-only")
-                way_checked += 1
-        elif "passing within" in text:
+            if "Closest " not in getting_html or " within " not in getting_html:
+                errors += fail(f"{site['code']} missing a path distance")
+                break
+            way_checked += 1
+        elif " within " in getting_html:
             errors += fail(f"{site['code']} mentions a path without a cached one")
             break
+        place = record.get("place") or {}
+        if place.get("name") and place.get("kind") in {"town", "village"}:
+            if f"Nearest {place['kind']}:" not in text:
+                errors += fail(f"{site['code']} missing nearest {place['kind']}")
+                break
     if parking_checked < 1 or way_checked < 1:
         errors += fail("could not sample a car park and a path")
+    maiden = DIST / "sites" / "en3598-maiden-castle-winterborne-st-martin" / "index.html"
+    if maiden.exists():
+        maiden_text = maiden.read_text(encoding="utf-8")
+        for phrase in (
+            "Nearest car park: Maiden Castle, 480 yards to the north.",
+            "Next closest car park: 0.8 miles to the south-east.",
+            "Closest footpath: within 40 yards.",
+            "Nearest village: Martinstown, 1.3 miles to the west.",
+            '<a href="/sites/en3587-chalbury/">Chalbury</a> is 3.3 miles to the south-east.',
+            "<h3>Other hill forts nearby</h3>",
+        ):
+            if phrase not in maiden_text:
+                errors += fail(f"Maiden Castle missing {phrase}")
+    else:
+        errors += fail("missing Maiden Castle page")
     print(f"Getting there checked on {len(sites)} site pages ({bare_checked} without a car park)")
 
     errors += check_photos(sites)
+    km_unit = re.compile(r"(?<![A-Za-z])km(?![A-Za-z])", re.I)
+    kilometre_word = re.compile(r"\bkilomet(?:re|er)s?\b", re.I)
+    km_hits = []
+    osm_hits = []
+    for path in html_files:
+        page = path.read_text(encoding="utf-8")
+        body = page.split("<main", 1)[-1].split("</main>", 1)[0] if "<main" in page else page
+        if km_unit.search(page) or kilometre_word.search(page):
+            km_hits.append(path.relative_to(DIST).as_posix())
+        if "OpenStreetMap shows" in body or "on OpenStreetMap" in body:
+            osm_hits.append(path.relative_to(DIST).as_posix())
+    if km_hits:
+        errors += fail(f"km remains on {len(km_hits)} public pages, for example {km_hits[0]}")
+    if osm_hits:
+        errors += fail(
+            f"OpenStreetMap shows / on OpenStreetMap remains on {len(osm_hits)} pages, "
+            f"for example {osm_hits[0]}"
+        )
+    else:
+        print(f"No km, and no OpenStreetMap body phrasing, on {len(html_files)} public pages")
 
     if errors:
         print(f"{errors} checks failed")

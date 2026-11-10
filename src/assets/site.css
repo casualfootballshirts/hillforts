@@ -252,6 +252,26 @@ h3 { font-size: 1.15rem; margin: 1.2rem 0 0.4rem; }
   margin-top: 0.15rem;
 }
 
+.home-highlights {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1.5rem;
+  align-items: start;
+}
+
+.home-highlights h2 { margin-top: 1.25rem; }
+
+.home-highlights .county-grid {
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+}
+
+.home-counties a,
+.home-forts a,
+.home-counties span,
+.home-forts span {
+  overflow-wrap: break-word;
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -358,10 +378,10 @@ h3 { font-size: 1.15rem; margin: 1.2rem 0 0.4rem; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 
-.links, .refs, .getting-there { padding-left: 1.15rem; }
-.links li, .refs li, .getting-there li { margin: 0.35rem 0; }
-.getting-there { max-width: 40rem; }
-.getting-there li { overflow-wrap: anywhere; }
+.links, .refs, .getting-there, .nearby-forts { padding-left: 1.15rem; }
+.links li, .refs li, .getting-there li, .nearby-forts li { margin: 0.35rem 0; }
+.getting-there, .nearby-forts { max-width: 40rem; }
+.getting-there li, .nearby-forts li { overflow-wrap: anywhere; }
 .refs { font-size: 0.95rem; }
 
 .popup a { font-weight: 650; }
@@ -474,6 +494,10 @@ body:has(.cookie-banner:not([hidden])) { padding-bottom: 12rem; }
 @media (max-width: 800px) {
   .layout { grid-template-columns: 1fr; }
   .map { height: 60vh; }
+  .home-highlights { grid-template-columns: 1fr; }
+  .home-highlights .county-grid {
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
