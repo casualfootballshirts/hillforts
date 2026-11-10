@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 SITES = ROOT / "data" / "sites.json"
+PHOTOS = ROOT / "data" / "photos.json"
 
 BANNED = [
     "located on Aconbury HIll",
@@ -123,10 +124,18 @@ def check_chrome(name, text):
         'rel="icon" href="/assets/favicon.svg"',
         'rel="icon" href="/assets/favicon-32.png"',
         'rel="apple-touch-icon" href="/assets/apple-touch-icon.png"',
-        'property="og:image" content="https://hillfortsmap.co.uk/assets/og.png"',
     ):
         if needle not in text:
             errors += fail(f"{name} missing {needle}")
+    photo = 'class="fort-photo"' in text
+    default_og = 'property="og:image" content="https://hillfortsmap.co.uk/assets/og.png"'
+    if photo:
+        if 'property="og:image" content="https://hillfortsmap.co.uk/assets/photos/' not in text:
+            errors += fail(f"{name} photo page missing its og:image")
+        if default_og in text:
+            errors += fail(f"{name} photo page still uses the default og:image")
+    elif default_og not in text:
+        errors += fail(f"{name} missing {default_og}")
     for needle in ATTRIBUTION:
         if needle not in text:
             errors += fail(f"{name} missing attribution {needle}")
@@ -238,6 +247,107 @@ def check_hubs(sites):
     return errors
 
 
+LICENCE_NAME = re.compile(
+    r"^(CC0|Public domain|CC BY (?:1\.0|2\.0|2\.5|3\.0|4\.0)|"
+    r"CC BY-SA (?:1\.0|2\.0|2\.5|3\.0|4\.0)|OGL 1\.0|OGL 3)$"
+)
+
+
+def check_photos(sites):
+    """Indexed forts may show one cached photo. Tail pages stay without one."""
+    errors = 0
+    if not PHOTOS.exists():
+        return fail("missing data/photos.json")
+    photos = json.loads(PHOTOS.read_text(encoding="utf-8"))
+    indexed = {site["slug"]: site for site in sites if site.get("index")}
+    extra = set(photos) - set(indexed)
+    if extra:
+        errors += fail(f"photos.json has {len(extra)} forts that are not indexed")
+    photo_dir = ROOT / "src" / "assets" / "photos"
+    for slug, photo in photos.items():
+        site = indexed.get(slug)
+        if not site:
+            continue
+        for key in ("id", "page", "file", "author", "licence", "licenceUrl", "via"):
+            if not photo.get(key):
+                errors += fail(f"{slug} photo missing {key}")
+        if photo.get("id") != site["code"]:
+            errors += fail(f"{slug} photo id does not match {site['code']}")
+        author = photo.get("author") or ""
+        if "<" in author or ">" in author or "&lt;" in author.lower():
+            errors += fail(f"{slug} author still contains HTML")
+        if not LICENCE_NAME.match(photo.get("licence") or ""):
+            errors += fail(f"{slug} licence {photo.get('licence')!r} is not allowed")
+        licence_url = photo.get("licenceUrl") or ""
+        if not licence_url.startswith("https://"):
+            errors += fail(f"{slug} licence URL is not https")
+        host = urllib_host(licence_url).lower()
+        if host not in {"creativecommons.org", "www.nationalarchives.gov.uk", "nationalarchives.gov.uk"}:
+            errors += fail(f"{slug} licence host {host}")
+        via = photo.get("via")
+        page = photo.get("page") or ""
+        if via == "Wikimedia Commons" and not page.startswith("https://commons.wikimedia.org/wiki/"):
+            errors += fail(f"{slug} Commons credit does not link to a file page")
+        elif via == "Geograph" and not page.startswith("https://www.geograph.org.uk/photo/"):
+            errors += fail(f"{slug} Geograph credit does not link to a photo page")
+        elif via not in {"Wikimedia Commons", "Geograph"}:
+            errors += fail(f"{slug} via {via!r}")
+        file_url = photo.get("file") or ""
+        if not file_url.startswith("https://upload.wikimedia.org/"):
+            errors += fail(f"{slug} original file is not a Commons upload")
+        if urllib_host(file_url).lower().endswith("geograph.org.uk"):
+            errors += fail(f"{slug} hotlinks a Geograph file")
+        wide = photo_dir / f"{slug}-1200.webp"
+        narrow = photo_dir / f"{slug}-600.webp"
+        for path in (wide, narrow):
+            if not path.is_file():
+                errors += fail(f"missing {path.name}")
+                continue
+            blob = path.read_bytes()[:16]
+            if blob[:4] != b"RIFF" or blob[8:12] != b"WEBP":
+                errors += fail(f"{path.name} is not WebP")
+            if path.stat().st_size > 500_000:
+                errors += fail(f"{path.name} is {path.stat().st_size} bytes")
+        text = (DIST / "sites" / slug / "index.html").read_text(encoding="utf-8")
+        alt = html.escape(f"{site['name']} hillfort", quote=True)
+        if f'alt="{alt}"' not in text or 'loading="lazy"' not in text:
+            errors += fail(f"{slug} missing alt text or lazy loading")
+        if 'class="fort-photo"' not in text:
+            errors += fail(f"{slug} missing the photo figure")
+        credit_author = html.escape(author, quote=True)
+        if f"Photo: {credit_author}," not in text:
+            errors += fail(f"{slug} credit line does not name the author")
+        if html.escape(licence_url, quote=True) not in text or html.escape(page, quote=True) not in text:
+            errors += fail(f"{slug} credit line does not link the licence and source")
+        if photo.get("licence") not in text:
+            errors += fail(f"{slug} credit line does not name the licence")
+        if f"via <a href=\"{html.escape(page, quote=True)}\"" not in text:
+            errors += fail(f"{slug} credit line does not use the source page as via")
+        og = f'property="og:image" content="https://hillfortsmap.co.uk/assets/photos/{slug}-1200.webp"'
+        if og not in text:
+            errors += fail(f"{slug} og:image is not the local photo")
+        if re.search(r'<img[^>]+src="https?://[^"]*geograph\.org\.uk', text):
+            errors += fail(f"{slug} hotlinks a Geograph image")
+        narrow_w = int(photo.get("narrowWidth") or 0)
+        wide_w = int(photo.get("wideWidth") or 0)
+        if narrow_w and f"/assets/photos/{slug}-600.webp {narrow_w}w" not in text:
+            errors += fail(f"{slug} srcset is missing the smaller image")
+        if wide_w and f"/assets/photos/{slug}-1200.webp {wide_w}w" not in text:
+            errors += fail(f"{slug} srcset is missing the wide image")
+    for site in sites:
+        if site["slug"] in photos and site.get("index"):
+            continue
+        text = (DIST / "sites" / site["slug"] / "index.html").read_text(encoding="utf-8")
+        if 'class="fort-photo"' in text or "/assets/photos/" in text:
+            errors += fail(f"{site['code']} should not have a photo")
+    return errors
+
+
+def urllib_host(url):
+    match = re.match(r"https://([^/]+)/", url or "")
+    return match.group(1) if match else ""
+
+
 def main():
     errors = 0
     sites = json.loads(SITES.read_text(encoding="utf-8"))
@@ -294,6 +404,8 @@ def main():
 
     sitemap = (DIST / "sitemap.xml").read_text(encoding="utf-8")
     expected_urls = 1 + len(INFO_INDEXED) + 6 + len(county_slugs) + len(indexed)
+    if expected_urls != 487:
+        errors += fail(f"sitemap formula changed: {expected_urls} != 487")
     if sitemap.count("<loc>") != expected_urls:
         errors += fail(f"sitemap locs {sitemap.count('<loc>')} != {expected_urls}")
     for slug in INFO_INDEXED:
@@ -505,6 +617,8 @@ def main():
     if parking_checked < 1 or way_checked < 1:
         errors += fail("could not sample a car park and a path")
     print(f"Getting there checked on {len(sites)} site pages ({bare_checked} without a car park)")
+
+    errors += check_photos(sites)
 
     if errors:
         print(f"{errors} checks failed")
