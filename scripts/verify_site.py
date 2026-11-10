@@ -343,6 +343,52 @@ def check_photos(sites):
     return errors
 
 
+MARKER_ICON_DIR = "/assets/vendor/images/"
+MARKER_ICONS = {
+    "iconUrl": "marker-icon.png",
+    "iconRetinaUrl": "marker-icon-2x.png",
+    "shadowUrl": "marker-shadow.png",
+}
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def check_marker_icons():
+    """Leaflet 1.9 prefixes Icon.Default.imagePath onto iconUrl, so these stay bare filenames."""
+    errors = 0
+    script_path = DIST / "assets" / "directory.js"
+    if not script_path.is_file():
+        return fail("missing directory.js")
+    script = script_path.read_text(encoding="utf-8")
+    if not re.search(
+        r"""L\.Icon\.Default\.imagePath\s*=\s*['"]/assets/vendor/images/['"]""",
+        script,
+    ):
+        errors += fail("directory.js does not set L.Icon.Default.imagePath to /assets/vendor/images/")
+    path_at = script.find("L.Icon.Default.imagePath")
+    marker_at = script.find("L.marker(")
+    if path_at == -1 or marker_at == -1 or path_at > marker_at:
+        errors += fail("directory.js sets the marker icon path after a marker is created")
+    for key, name in MARKER_ICONS.items():
+        urls = re.findall(rf"""(?<![A-Za-z]){key}\s*:\s*['"]([^'"]+)['"]""", script)
+        if urls != [name]:
+            errors += fail(f"directory.js {key} should be the bare filename {name}, found {urls}")
+        path = DIST / "assets" / "vendor" / "images" / name
+        if not path.is_file():
+            errors += fail(f"missing marker image {name}")
+        elif path.read_bytes()[:8] != PNG_MAGIC:
+            errors += fail(f"{name} is not a PNG")
+        requested = DIST / (MARKER_ICON_DIR + name).lstrip("/")
+        if not requested.is_file():
+            errors += fail(f"Leaflet would request {MARKER_ICON_DIR}{name}, which is missing")
+    for path in sorted((DIST / "assets").rglob("*.js")):
+        if "vendor" in path.parts or path.name == "directory.js":
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "L.marker" in text or "L.Icon" in text or "new L.icon" in text:
+            errors += fail(f"{path.relative_to(DIST).as_posix()} also creates Leaflet markers")
+    return errors
+
+
 def urllib_host(url):
     match = re.match(r"https://([^/]+)/", url or "")
     return match.group(1) if match else ""
@@ -522,6 +568,7 @@ def main():
     ):
         if not (DIST / "assets" / name).exists():
             errors += fail(f"missing asset {name}")
+    errors += check_marker_icons()
 
     cname = (DIST / "CNAME").read_text(encoding="utf-8").strip()
     if cname != "hillfortsmap.co.uk":

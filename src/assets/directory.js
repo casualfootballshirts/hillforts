@@ -18,10 +18,11 @@
     multivallate: "Multivallate",
   };
 
+  L.Icon.Default.imagePath = "/assets/vendor/images/";
   L.Icon.Default.mergeOptions({
-    iconUrl: "/assets/vendor/images/marker-icon.png",
-    iconRetinaUrl: "/assets/vendor/images/marker-icon-2x.png",
-    shadowUrl: "/assets/vendor/images/marker-shadow.png",
+    iconUrl: "marker-icon.png",
+    iconRetinaUrl: "marker-icon-2x.png",
+    shadowUrl: "marker-shadow.png",
   });
 
   const map = L.map(mapEl, { scrollWheelZoom: mapEl.dataset.scroll === "1" });
