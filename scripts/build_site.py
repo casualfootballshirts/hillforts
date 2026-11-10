@@ -569,7 +569,7 @@ def fact_rows(site):
 
 
 def attribution() -> str:
-    return """<footer class="site-footer"><div class="wrap"><nav class="footer-nav" aria-label="Information"><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/cookies/">Cookies</a><a href="/terms/">Terms</a><button type="button" class="cookie-settings" data-cookie-settings>Cookie settings</button></nav><p>Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland. <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>. <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. Licence <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>.</p></div></footer>"""
+    return """<footer class="site-footer"><div class="wrap"><nav class="footer-nav" aria-label="Information"><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/cookies/">Cookies</a><a href="/terms/">Terms</a><button type="button" class="cookie-settings" data-cookie-settings>Cookie settings</button></nav><p>Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland. <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>. <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. Licence <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Map data and access notes &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, <a href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL</a>.</p></div></footer>"""
 
 
 def header(active=None) -> str:
@@ -721,15 +721,23 @@ def list_item(site) -> str:
     )
 
 
+METRES_PER_MILE = 1609.344
+YARDS_PER_METRE = 1 / 0.9144
+# Yards under about a quarter of a mile. The cutoff is 0.3 miles so a walk
+# of roughly 400–480 metres stays in yards rather than reading as "0.3 miles".
+YARD_LIMIT_METRES = 0.3 * METRES_PER_MILE
+
+
 def travel_distance(metres) -> str:
     metres = int(metres)
-    if metres < 950:
-        rounded = max(10, int(round(metres / 10.0) * 10))
-        return f"{rounded} m"
-    text = f"{metres / 1000:.1f}"
+    if metres < YARD_LIMIT_METRES:
+        yards = max(10, int(round(metres * YARDS_PER_METRE / 10.0) * 10))
+        return f"{yards} yards"
+    text = f"{metres / METRES_PER_MILE:.1f}"
     if text.endswith(".0"):
         text = text[:-2]
-    return f"{text} km"
+    unit = "mile" if text == "1" else "miles"
+    return f"{text} {unit}"
 
 
 def compass(lat1, lon1, lat2, lon2) -> str:
@@ -794,57 +802,56 @@ def nearest_hillforts(sites):
 WAY_PHRASE = {
     "public-footpath": "public footpath",
     "public-bridleway": "public bridleway",
-    "footway": "footway",
+    "footway": "footpath",
     "path": "path",
     "track": "track",
 }
 
 
 def getting_there(site, record, neighbors) -> str:
+    record = record or {}
     items = []
-    for park in (record or {}).get("parking") or []:
+    for index, park in enumerate(record.get("parking") or []):
         bearing = compass(site["lat"], site["lon"], park["lat"], park["lon"])
         distance = travel_distance(park["metres"])
-        name = park.get("name") or ""
+        label = "Nearest car park" if index == 0 else "Next closest car park"
+        name = (park.get("name") or "").strip()
         if name:
-            sentence = f"OpenStreetMap shows the car park {name}, {distance} to the {bearing}."
+            sentence = f"{label}: {name}, {distance} to the {bearing}."
         else:
-            sentence = f"OpenStreetMap shows a car park {distance} to the {bearing}."
+            sentence = f"{label}: {distance} to the {bearing}."
         url = f"https://www.google.com/maps/dir/?api=1&destination={park['lat']:.5f},{park['lon']:.5f}"
         items.append(
             f"<li>{esc(sentence)} <a href=\"{esc(url)}\" rel=\"noopener noreferrer\">Directions</a></li>"
         )
-    way = (record or {}).get("way")
+    way = record.get("way")
     if way and way.get("kind") in WAY_PHRASE:
         noun = WAY_PHRASE[way["kind"]]
         distance = travel_distance(way["metres"])
-        name = way.get("name") or ""
+        name = (way.get("name") or "").strip()
         if name:
-            sentence = f"OpenStreetMap shows the {noun} {name} passing within {distance}."
+            sentence = f"Closest {noun}: {name}, within {distance}."
         else:
-            sentence = f"OpenStreetMap shows a {noun} passing within {distance}."
+            sentence = f"Closest {noun}: within {distance}."
         items.append(f"<li>{esc(sentence)}</li>")
-    place = (record or {}).get("place")
+    place = record.get("place")
     if place and place.get("name") and place.get("kind") in {"town", "village"}:
         bearing = compass(site["lat"], site["lon"], place["lat"], place["lon"])
         distance = travel_distance(place["metres"])
-        sentence = (
-            f"The nearest {place['kind']} on OpenStreetMap is {place['name']}, "
-            f"{distance} to the {bearing}."
-        )
+        sentence = f"Nearest {place['kind']}: {place['name']}, {distance} to the {bearing}."
         items.append(f"<li>{esc(sentence)}</li>")
-    for position, other in enumerate(neighbors or []):
-        link = f'<a href="/sites/{esc(other["slug"])}/">{esc(other["name"])}</a>'
-        distance = esc(travel_distance(other["metres"]))
-        bearing = esc(other["bearing"])
-        if position == 0:
-            sentence = f"The nearest other hillfort is {link}, {distance} to the {bearing}."
-        else:
-            sentence = f"{link} is {distance} to the {bearing}."
-        items.append(f'<li class="nearby-fort">{sentence}</li>')
-    if not items:
-        return ""
-    return f"<h3>Getting there</h3><ul class=\"getting-there\">{''.join(items)}</ul>"
+    parts = []
+    if items:
+        parts.append(f"<h3>Getting there</h3><ul class=\"getting-there\">{''.join(items)}</ul>")
+    if neighbors:
+        entries = []
+        for other in neighbors:
+            link = f'<a href="/sites/{esc(other["slug"])}/">{esc(other["name"])}</a>'
+            distance = esc(travel_distance(other["metres"]))
+            bearing = esc(other["bearing"])
+            entries.append(f'<li class="nearby-fort">{link} is {distance} to the {bearing}.</li>')
+        parts.append(f"<h3>Other hill forts nearby</h3><ul class=\"nearby-forts\">{''.join(entries)}</ul>")
+    return "".join(parts)
 
 
 def site_page(site, access, neighbors) -> str:
@@ -1027,7 +1034,7 @@ def write_info_pages(site_count: int) -> None:
 <h2>Data licence</h2>
 <p>The underlying records come from Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland, <a href="https://doi.org/10.5284/1118744">https://doi.org/10.5284/1118744</a>, <a href="https://hillforts.arch.ox.ac.uk">hillforts.arch.ox.ac.uk</a>. They are used under the Creative Commons Attribution-ShareAlike 4.0 International licence (CC BY-SA 4.0): <a href="https://creativecommons.org/licenses/by-sa/4.0/">https://creativecommons.org/licenses/by-sa/4.0/</a>.</p>
 <p>This site is shared under the same licence. If you share or adapt material from it that is covered by that licence, give appropriate credit, link to the licence, and distribute your adaptation under the same licence. A suitable credit line is: Lock &amp; Ralston, Atlas of Hillforts of Britain and Ireland.</p>
-<p>Map tiles are loaded from OpenStreetMap. Map data is &copy; OpenStreetMap contributors.</p>
+<p>Map tiles are loaded from OpenStreetMap. Map data and access notes are &copy; OpenStreetMap contributors, under the <a href="https://opendatacommons.org/licenses/odbl/1-0/">Open Database Licence</a> (ODbL).</p>
 <h2>Using the website</h2>
 <p>You may browse the site freely. Do not disrupt it, and do not put an unreasonable load on it or on the OpenStreetMap tile servers the maps use.</p>
 <h2>Changes</h2>

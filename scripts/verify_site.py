@@ -597,12 +597,35 @@ def main():
     if set(access) != {site["slug"] for site in sites}:
         errors += fail("access.json slugs do not match sites.json")
     banned_access = ("no data", "No car park", "legal access", "you can walk", "right to visit")
+    nearby_line = re.compile(
+        r" is \d+(?:\.\d+)? (?:mile|miles|yards) to the "
+        r"(?:north|north-east|east|south-east|south|south-west|west|north-west)\.$"
+    )
+    metric_distance = re.compile(r"\b\d+(?:\.\d+)? (?:m|km)\b", re.I)
     parking_checked = way_checked = bare_checked = 0
     for site in sites:
         text = (DIST / "sites" / site["slug"] / "index.html").read_text(encoding="utf-8")
         record = access.get(site["slug"]) or {}
-        if text.count('class="nearby-fort"') != 5:
+        main = text.split("<main", 1)[-1].split("</main>", 1)[0]
+        if "<h3>Other hill forts nearby</h3>" not in text:
+            errors += fail(f"{site['code']} missing Other hill forts nearby")
+            break
+        nearby = re.findall(r'<li class="nearby-fort">(.*?)</li>', text)
+        if len(nearby) != 5:
             errors += fail(f"{site['code']} should list five nearby hillforts")
+            break
+        nearby_ok = True
+        for item in nearby:
+            plain = html.unescape(re.sub(r"<[^>]+>", "", item))
+            if not nearby_line.search(plain):
+                errors += fail(f"{site['code']} nearby line is not 'Name is distance to the bearing': {plain}")
+                nearby_ok = False
+                break
+            if 'href="/sites/' not in item:
+                errors += fail(f"{site['code']} nearby fort is missing its page link")
+                nearby_ok = False
+                break
+        if not nearby_ok:
             break
         if "<h3>Getting there</h3>" not in text:
             errors += fail(f"{site['code']} missing Getting there")
@@ -611,30 +634,91 @@ def main():
             if phrase in text:
                 errors += fail(f"{site['code']} contains {phrase}")
                 break
-        if record.get("parking"):
-            if parking_checked < 3:
-                if "car park" not in text or "https://www.google.com/maps/dir/?api=1&amp;destination=" not in text:
-                    errors += fail(f"{site['code']} missing a car park directions link")
-                parking_checked += 1
+        if "OpenStreetMap shows" in main or "on OpenStreetMap" in main:
+            errors += fail(f"{site['code']} still attributes OpenStreetMap in the page body")
+            break
+        metric_ok = True
+        for chunk in re.findall(r'<ul class="(?:getting-there|nearby-forts)">(.*?)</ul>', text, re.S):
+            plain = html.unescape(re.sub(r"<[^>]+>", " ", chunk))
+            if metric_distance.search(plain):
+                errors += fail(f"{site['code']} still uses a metric distance: {plain.strip()[:180]}")
+                metric_ok = False
+                break
+        if not metric_ok:
+            break
+        parks = record.get("parking") or []
+        directions = text.count("https://www.google.com/maps/dir/?api=1&amp;destination=")
+        if directions != len(parks):
+            errors += fail(f"{site['code']} has {directions} directions links for {len(parks)} car parks")
+            break
+        if parks:
+            if "Nearest car park:" not in text:
+                errors += fail(f"{site['code']} missing Nearest car park")
+                break
+            if len(parks) > 1 and "Next closest car park:" not in text:
+                errors += fail(f"{site['code']} missing Next closest car park")
+                break
+            parking_checked += 1
         elif "car park" in text:
             errors += fail(f"{site['code']} mentions a car park without a cached one")
             break
         else:
             bare_checked += 1
+        getting = re.search(r'<ul class="getting-there">(.*?)</ul>', text, re.S)
+        getting_html = getting.group(1) if getting else ""
         way = record.get("way") or {}
         if way.get("kind"):
-            if way_checked < 3:
-                if "OpenStreetMap shows a " not in text and "OpenStreetMap shows the " not in text:
-                    errors += fail(f"{site['code']} missing a careful path sentence")
-                if "passing within" not in text:
-                    errors += fail(f"{site['code']} path sentence is not distance-only")
-                way_checked += 1
-        elif "passing within" in text:
+            if "Closest " not in getting_html or " within " not in getting_html:
+                errors += fail(f"{site['code']} missing a path distance")
+                break
+            way_checked += 1
+        elif " within " in getting_html:
             errors += fail(f"{site['code']} mentions a path without a cached one")
             break
+        place = record.get("place") or {}
+        if place.get("name") and place.get("kind") in {"town", "village"}:
+            if f"Nearest {place['kind']}:" not in text:
+                errors += fail(f"{site['code']} missing nearest {place['kind']}")
+                break
     if parking_checked < 1 or way_checked < 1:
         errors += fail("could not sample a car park and a path")
+    maiden = DIST / "sites" / "en3598-maiden-castle-winterborne-st-martin" / "index.html"
+    if maiden.exists():
+        maiden_text = maiden.read_text(encoding="utf-8")
+        for phrase in (
+            "Nearest car park: Maiden Castle, 480 yards to the north.",
+            "Next closest car park: 0.8 miles to the south-east.",
+            "Closest footpath: within 40 yards.",
+            "Nearest village: Martinstown, 1.3 miles to the west.",
+            '<a href="/sites/en3587-chalbury/">Chalbury</a> is 3.3 miles to the south-east.',
+            "<h3>Other hill forts nearby</h3>",
+        ):
+            if phrase not in maiden_text:
+                errors += fail(f"Maiden Castle missing {phrase}")
+    else:
+        errors += fail("missing Maiden Castle page")
     print(f"Getting there checked on {len(sites)} site pages ({bare_checked} without a car park)")
+
+    km_unit = re.compile(r"(?<![A-Za-z])km(?![A-Za-z])", re.I)
+    kilometre_word = re.compile(r"\bkilomet(?:re|er)s?\b", re.I)
+    km_hits = []
+    osm_hits = []
+    for path in html_files:
+        page = path.read_text(encoding="utf-8")
+        body = page.split("<main", 1)[-1].split("</main>", 1)[0] if "<main" in page else page
+        if km_unit.search(page) or kilometre_word.search(page):
+            km_hits.append(path.relative_to(DIST).as_posix())
+        if "OpenStreetMap shows" in body or "on OpenStreetMap" in body:
+            osm_hits.append(path.relative_to(DIST).as_posix())
+    if km_hits:
+        errors += fail(f"km remains on {len(km_hits)} public pages, for example {km_hits[0]}")
+    if osm_hits:
+        errors += fail(
+            f"OpenStreetMap shows / on OpenStreetMap remains on {len(osm_hits)} pages, "
+            f"for example {osm_hits[0]}"
+        )
+    else:
+        print(f"No km, and no OpenStreetMap body phrasing, on {len(html_files)} public pages")
 
     if errors:
         print(f"{errors} checks failed")
