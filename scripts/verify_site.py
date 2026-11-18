@@ -389,6 +389,101 @@ def check_marker_icons():
     return errors
 
 
+def check_hub_fort_links(sites):
+    """Searched indexed forts are linked near the top of their hubs.
+
+    Every indexed fort is also a plain HTML link on its county hub. Searched
+    forts that are not indexed stay out of the popular and best-to-visit lists.
+    """
+    errors = 0
+    featured_path = ROOT / "data" / "featured_forts.json"
+    if not featured_path.is_file():
+        return fail("missing data/featured_forts.json")
+    payload = json.loads(featured_path.read_text(encoding="utf-8"))
+    queries = payload.get("queries")
+    if not isinstance(queries, list) or not queries:
+        return fail("featured_forts.json has no queries")
+    by_code = {site["code"]: site for site in sites}
+    seen_queries = set()
+    matched = []
+    notes = []
+    for entry in queries:
+        query = entry.get("query") or ""
+        if not query or query in seen_queries:
+            errors += fail(f"featured query missing or duplicated: {query!r}")
+        seen_queries.add(query)
+        note = entry.get("note") or ""
+        if note:
+            notes.append(note)
+        ids = entry.get("ids")
+        if not isinstance(ids, list):
+            errors += fail(f"{query} ids must be a list")
+            continue
+        for code in ids:
+            site = by_code.get(code)
+            if site is None:
+                errors += fail(f"{query} id {code} is not in sites.json")
+                continue
+            matched.append((query, site))
+    hub_cache = {}
+
+    def hub_text(kind, slug):
+        key = (kind, slug)
+        if key not in hub_cache:
+            folder = "counties" if kind == "county" else "nations"
+            path = DIST / folder / slug / "index.html"
+            hub_cache[key] = path.read_text(encoding="utf-8") if path.is_file() else ""
+        return hub_cache[key]
+
+    indexed_matches = 0
+    for query, site in matched:
+        anchor = f'<a href="/sites/{site["slug"]}/">{html.escape(site["name"], quote=True)}</a>'
+        for kind, slug in (("county", site["countySlug"]), ("nation", site["nation"])):
+            text = hub_text(kind, slug)
+            label = f"{kind} {slug}"
+            if not text:
+                errors += fail(f"missing {label} hub for {site['code']}")
+                continue
+            top = text.split('<ul class="site-list"', 1)[0]
+            popular = re.search(r'<ul class="county-grid popular-forts">(.*?)</ul>', text, re.S)
+            popular_html = popular.group(1) if popular else ""
+            best = re.search(r'<ol class="best-list">(.*?)</ol>', text, re.S)
+            best_html = best.group(1) if best else ""
+            if site.get("index"):
+                if anchor not in top:
+                    errors += fail(
+                        f"{label} does not link {site['code']} {site['name']} near the top ({query})"
+                    )
+            elif anchor in popular_html or f'/sites/{site["slug"]}/' in popular_html:
+                errors += fail(f"{label} popular list links noindexed {site['code']}")
+            elif f'/sites/{site["slug"]}/' in best_html:
+                errors += fail(f"{label} best list links noindexed {site['code']}")
+        if site.get("index"):
+            indexed_matches += 1
+    for note in notes:
+        for kind, slug in hub_cache:
+            if note in hub_cache[(kind, slug)]:
+                errors += fail(f"{kind} {slug} publishes a featured-forts note")
+                break
+    checked = 0
+    for site in sites:
+        if not site.get("index"):
+            continue
+        text = hub_text("county", site["countySlug"])
+        anchor = f'<a href="/sites/{site["slug"]}/">{html.escape(site["name"], quote=True)}</a>'
+        if anchor not in text:
+            errors += fail(f"{site['code']} is not linked in plain HTML from {site['countySlug']}")
+            break
+        checked += 1
+    else:
+        if checked != 300:
+            errors += fail(f"county plain-link check covered {checked} indexed forts")
+    if indexed_matches < 1:
+        errors += fail("featured_forts.json has no indexed forts to link")
+    print(f"Featured hub links checked for {indexed_matches} indexed matches")
+    return errors
+
+
 def urllib_host(url):
     match = re.match(r"https://([^/]+)/", url or "")
     return match.group(1) if match else ""
@@ -637,6 +732,7 @@ def main():
     if "Scotland" not in nation:
         errors += fail("nation page content")
     errors += check_hubs(sites)
+    errors += check_hub_fort_links(sites)
 
     # Spot-check a few more pages for banned narrative, not only the samples.
     checked = 0
@@ -762,6 +858,7 @@ def main():
     )
     metric_distance = re.compile(r"\b\d+(?:\.\d+)? (?:m|km)\b", re.I)
     parking_checked = way_checked = bare_checked = 0
+    indexed_slugs = {site["slug"] for site in sites if site.get("index")}
     for site in sites:
         text = (DIST / "sites" / site["slug"] / "index.html").read_text(encoding="utf-8")
         record = access.get(site["slug"]) or {}
@@ -786,6 +883,37 @@ def main():
                 break
         if not nearby_ok:
             break
+        nearby_slugs = re.findall(r'<li class="nearby-fort"><a href="/sites/([^"]+)/"', text)
+        indexed_near = [slug for slug in nearby_slugs if slug in indexed_slugs]
+        visit = re.findall(r'<li class="visit-nearby">(.*?)</li>', text)
+        visit_slugs = re.findall(r'<li class="visit-nearby"><a href="/sites/([^"]+)/"', text)
+        if len(indexed_near) >= 2:
+            if visit or "<h3>Hillforts to visit nearby</h3>" in text:
+                errors += fail(f"{site['code']} adds hillforts to visit when indexed neighbors are already linked")
+                break
+        else:
+            if "<h3>Hillforts to visit nearby</h3>" not in text or len(visit) != len(visit_slugs):
+                errors += fail(f"{site['code']} is missing hillforts to visit nearby")
+                break
+            total = len(indexed_near) + len(visit_slugs)
+            if not (2 <= total <= 4):
+                errors += fail(f"{site['code']} has {total} nearby indexed hillfort links, expected 2–4")
+                break
+            if any(slug not in indexed_slugs or slug in nearby_slugs for slug in visit_slugs):
+                errors += fail(f"{site['code']} visit nearby list is not extra indexed hillforts")
+                break
+            visit_ok = True
+            for item in visit:
+                plain = html.unescape(re.sub(r"<[^>]+>", "", item))
+                if not nearby_line.search(plain):
+                    errors += fail(f"{site['code']} visit nearby line is not 'Name is distance to the bearing': {plain}")
+                    visit_ok = False
+                    break
+            if not visit_ok:
+                break
+        if f'href="/counties/{html.escape(site["countySlug"], quote=True)}/"' not in text:
+            errors += fail(f"{site['code']} does not link its county hub")
+            break
         if "<h3>Getting there</h3>" not in text:
             errors += fail(f"{site['code']} missing Getting there")
             break
@@ -797,7 +925,7 @@ def main():
             errors += fail(f"{site['code']} still attributes OpenStreetMap in the page body")
             break
         metric_ok = True
-        for chunk in re.findall(r'<ul class="(?:getting-there|nearby-forts)">(.*?)</ul>', text, re.S):
+        for chunk in re.findall(r'<ul class="(?:getting-there|nearby-forts|visit-nearby)">(.*?)</ul>', text, re.S):
             plain = html.unescape(re.sub(r"<[^>]+>", " ", chunk))
             if metric_distance.search(plain):
                 errors += fail(f"{site['code']} still uses a metric distance: {plain.strip()[:180]}")

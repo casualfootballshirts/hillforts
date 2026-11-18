@@ -1,0 +1,58 @@
+{
+  "queries": [
+    {"query": "abbotsbury hillfort", "ids": ["EN3579"]},
+    {"query": "bindon hill", "ids": ["EN3582"]},
+    {"query": "brass knocker hill", "ids": [], "note": "No Atlas record uses this name."},
+    {"query": "burgh walls camp", "ids": ["EN3984"]},
+    {
+      "query": "bury hill fort",
+      "ids": ["EN3836", "EN0168", "EN0400", "EN3961"],
+      "note": "EN3836 is Bury Hill, Upper Clatford. The others are also named Bury Hill."
+    },
+    {
+      "query": "cademuir hill fort",
+      "ids": ["SC3654", "SC3653"],
+      "note": "Two forts on Cademuir Hill. SC3654 is the larger, Cademuir Hill 1."
+    },
+    {"query": "castell cawr", "ids": ["WA1169"]},
+    {"query": "casterley camp", "ids": ["EN0389"]},
+    {
+      "query": "castle craig",
+      "ids": ["SC2650", "SC1858", "SC3204"],
+      "note": "SC2650 is Castle Craig, Auchterarder. SC1858 is Castle Craig, Tillicoultry. SC3204 Benarty lists Castle Craig as an alternative name."
+    },
+    {"query": "caynham camp", "ids": ["EN0061"]},
+    {"query": "croft ambrey hillfort", "ids": ["EN0012"]},
+    {"query": "dumpdon hill fort", "ids": ["EN3351"]},
+    {"query": "dundurn fort", "ids": ["SC2625"]},
+    {
+      "query": "dunmore fort",
+      "ids": ["SC1477", "SC2612", "SC3180", "SC2662", "IR0978"],
+      "note": "Primary name Dunmore, or Dun Mor with alternative name Dunmore."
+    },
+    {"query": "dunsinane hill fort", "ids": ["SC3062"]},
+    {"query": "eggardon hill fort", "ids": ["EN3592"]},
+    {"query": "foel drygarn hill fort", "ids": ["WA1895"]},
+    {"query": "gorcott hill", "ids": [], "note": "No Atlas record uses this name."},
+    {"query": "helsby hill", "ids": ["EN3184"]},
+    {"query": "henllys", "ids": ["WA1888"]},
+    {"query": "hod hill dorset", "ids": ["EN3595"]},
+    {"query": "ladle hill fort", "ids": ["EN3793"]},
+    {
+      "query": "lantern hill ilfracombe",
+      "ids": [],
+      "note": "No Atlas record uses this name. Hillsborough, Ilfracombe (EN3458) is a different headland."
+    },
+    {
+      "query": "llanwnda pembrokeshire",
+      "ids": ["WA1987", "WA1952"],
+      "note": "Names that include Llanwnda. Garn Fawr (WA1988) does not."
+    },
+    {"query": "lordenshaw hill fort", "ids": ["EN0551"]},
+    {"query": "melin y wig", "ids": ["WA1177"]},
+    {"query": "ord & teine", "ids": [], "note": "No Atlas record uses this name."},
+    {"query": "segsbury camp", "ids": ["EN0155"]},
+    {"query": "toothill fort", "ids": ["EN3829"]},
+    {"query": "maiden castle", "ids": ["EN3598"], "note": "Maiden Castle, Winterborne St Martin, Dorset."}
+  ]
+}
