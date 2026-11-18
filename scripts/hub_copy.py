@@ -1395,7 +1395,38 @@ def assert_intro(profile, paragraphs, words: int) -> None:
         raise RuntimeError(f"{profile['slug']} intro names too few hillforts")
 
 
-def hub_content(sites, *, kind, name, country, slug, nation_slug, canonical) -> dict:
+def popular_html(profile, best, featured) -> str:
+    """Name links for searched forts that are not already in the visit list."""
+    if not featured:
+        return ""
+    group_slugs = {site["slug"] for site in profile["sites"]}
+    best_slugs = {site["slug"] for site in best}
+    seen = set()
+    extra = []
+    for site in featured:
+        if not site.get("index") or site["slug"] not in group_slugs:
+            continue
+        if site["slug"] in best_slugs or site["slug"] in seen:
+            continue
+        seen.add(site["slug"])
+        extra.append(site)
+    if not extra:
+        return ""
+    extra.sort(key=lambda site: (-visit_score(site), site["name"].lower(), site["code"]))
+    items = []
+    for site in extra:
+        county = ""
+        if profile["kind"] == "nation" and site.get("county"):
+            county = f"<span>{esc(site['county'])}</span>"
+        items.append(
+            "<li>"
+            f'<a href="/sites/{esc(site["slug"])}/">{esc(site["name"])}</a>'
+            f"{county}</li>"
+        )
+    return f'<h2>Popular hillforts</h2><ul class="county-grid popular-forts">{"".join(items)}</ul>'
+
+
+def hub_content(sites, *, kind, name, country, slug, nation_slug, canonical, featured=None) -> dict:
     profile = build_profile(sites, kind=kind, name=name, country=country, slug=slug)
     paragraphs, words = assemble(profile)
     assert_intro(profile, paragraphs, words)
@@ -1428,7 +1459,8 @@ def hub_content(sites, *, kind, name, country, slug, nation_slug, canonical) -> 
                 f"<p>{esc(fact_line(site))}</p></div></li>"
             )
         best_html = f"<h2>{esc(best_heading(name))}</h2><ol class=\"best-list\">{''.join(items)}</ol>"
-    body = f"{crumbs}<h1>{esc(h1)}</h1>{prose}{''.join(stats)}{best_html}"
+    popular = popular_html(profile, best, featured)
+    body = f"{crumbs}<h1>{esc(h1)}</h1>{prose}{''.join(stats)}{best_html}{popular}"
     return {
         "title": title,
         "description": description,

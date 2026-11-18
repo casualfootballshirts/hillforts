@@ -16,6 +16,7 @@ SRC = ROOT / "src"
 DATA = ROOT / "data" / "sites.json"
 ACCESS = ROOT / "data" / "access.json"
 PHOTOS = ROOT / "data" / "photos.json"
+FEATURED = ROOT / "data" / "featured_forts.json"
 DIST = ROOT / "dist"
 BASE = "https://hillfortsmap.co.uk"
 GA_MEASUREMENT_ID = "G-3QGXKPZ9XK"
@@ -803,6 +804,68 @@ def nearest_hillforts(sites):
     return found
 
 
+def load_featured(sites):
+    """Atlas codes for forts people search by name. Notes in the file are not published."""
+    if not FEATURED.is_file():
+        raise SystemExit("data/featured_forts.json is missing")
+    payload = json.loads(FEATURED.read_text(encoding="utf-8"))
+    queries = payload.get("queries")
+    if not isinstance(queries, list):
+        raise SystemExit("data/featured_forts.json needs a queries list")
+    by_code = {site["code"]: site for site in sites}
+    ordered = []
+    seen = set()
+    for entry in queries:
+        ids = entry.get("ids")
+        if not isinstance(ids, list):
+            raise SystemExit(f"featured query {entry.get('query')!r} needs an ids list")
+        for code in ids:
+            if not isinstance(code, str) or code not in by_code:
+                raise SystemExit(f"featured fort {code!r} is not an Atlas code")
+            if code in seen:
+                continue
+            seen.add(code)
+            ordered.append(by_code[code])
+    return ordered
+
+
+def featured_in(group, featured):
+    slugs = {site["slug"] for site in group}
+    return [site for site in featured if site.get("index") and site["slug"] in slugs]
+
+
+def indexed_visit_targets(sites, neighbors):
+    """Two to four indexed forts, skipping any already among the five nearest."""
+    indexed = [site for site in sites if site.get("index")]
+    indexed_slugs = {site["slug"] for site in indexed}
+    found = {}
+    for site in sites:
+        near = neighbors.get(site["slug"]) or []
+        already = [item for item in near if item["slug"] in indexed_slugs]
+        if len(already) >= 2:
+            found[site["slug"]] = []
+            continue
+        taken = {item["slug"] for item in near}
+        taken.add(site["slug"])
+        ranked = []
+        for other in indexed:
+            if other["slug"] in taken:
+                continue
+            metres = haversine_m(site["lat"], site["lon"], other["lat"], other["lon"])
+            ranked.append((metres, other["code"], other))
+        ranked.sort()
+        chosen = []
+        for metres, _code, other in ranked[: 3 - len(already)]:
+            chosen.append({
+                "slug": other["slug"],
+                "name": other["name"],
+                "metres": int(round(metres)),
+                "bearing": compass(site["lat"], site["lon"], other["lat"], other["lon"]),
+            })
+        found[site["slug"]] = chosen
+    return found
+
+
 WAY_PHRASE = {
     "public-footpath": "public footpath",
     "public-bridleway": "public bridleway",
@@ -812,7 +875,7 @@ WAY_PHRASE = {
 }
 
 
-def getting_there(site, record, neighbors) -> str:
+def getting_there(site, record, neighbors, indexed_extra=None) -> str:
     record = record or {}
     items = []
     for index, park in enumerate(record.get("parking") or []):
@@ -855,6 +918,14 @@ def getting_there(site, record, neighbors) -> str:
             bearing = esc(other["bearing"])
             entries.append(f'<li class="nearby-fort">{link} is {distance} to the {bearing}.</li>')
         parts.append(f"<h3>Other hill forts nearby</h3><ul class=\"nearby-forts\">{''.join(entries)}</ul>")
+    if indexed_extra:
+        entries = []
+        for other in indexed_extra:
+            link = f'<a href="/sites/{esc(other["slug"])}/">{esc(other["name"])}</a>'
+            distance = esc(travel_distance(other["metres"]))
+            bearing = esc(other["bearing"])
+            entries.append(f'<li class="visit-nearby">{link} is {distance} to the {bearing}.</li>')
+        parts.append(f"<h3>Hillforts to visit nearby</h3><ul class=\"visit-nearby\">{''.join(entries)}</ul>")
     return "".join(parts)
 
 
@@ -887,7 +958,7 @@ def render_photo(site, photo) -> str:
     )
 
 
-def site_page(site, access, neighbors, photo=None) -> str:
+def site_page(site, access, neighbors, photo=None, indexed_extra=None) -> str:
     indexed = bool(site.get("index"))
     robots = "index,follow" if indexed else "noindex,follow"
     crumbs = (
@@ -937,7 +1008,7 @@ def site_page(site, access, neighbors, photo=None) -> str:
 {photo_html}
 {lede}
 <div class="layout">
-<article class="panel">{render_facts(site)}{getting_there(site, access, neighbors)}{render_links(site)}{render_refs(site)}</article>
+<article class="panel">{render_facts(site)}{getting_there(site, access, neighbors, indexed_extra)}{render_links(site)}{render_refs(site)}</article>
 <aside class="panel">
 <div id="map" class="map site-map" data-mode="site" data-lat="{site["lat"]}" data-lon="{site["lon"]}" data-name="{esc(site["name"])}" role="region" aria-label="Map of {esc(site["name"])}"></div>
 </aside>
@@ -1256,11 +1327,19 @@ def main():
         if int(photo.get("narrowWidth") or 0) and not (photo_dir / f"{slug}-600.webp").is_file():
             raise SystemExit(f"missing smaller photo for {slug}")
     neighbors = nearest_hillforts(sites)
+    featured = load_featured(sites)
+    indexed_extra = indexed_visit_targets(sites, neighbors)
     for site in sites:
         photo = photos.get(site["slug"]) if site.get("index") else None
         write(
             DIST / "sites" / site["slug"] / "index.html",
-            site_page(site, access.get(site["slug"]), neighbors.get(site["slug"]), photo),
+            site_page(
+                site,
+                access.get(site["slug"]),
+                neighbors.get(site["slug"]),
+                photo,
+                indexed_extra.get(site["slug"]),
+            ),
         )
 
     nation_cards = []
@@ -1288,6 +1367,7 @@ def main():
             slug=slug,
             nation_slug=slug,
             canonical=canonical,
+            featured=featured_in(group, featured),
         )
         write(
             DIST / "nations" / slug / "index.html",
@@ -1316,6 +1396,7 @@ def main():
             slug=county["slug"],
             nation_slug=county["nation"],
             canonical=canonical,
+            featured=featured_in(county["sites"], featured),
         )
         write(
             DIST / "counties" / county["slug"] / "index.html",
@@ -1413,7 +1494,9 @@ def main():
     write(DIST / "CNAME", "hillfortsmap.co.uk\n")
     write(DIST / ".nojekyll", "")
     indexed = sum(1 for site in sites if site.get("index"))
+    linked = sum(1 for site in featured if site.get("index"))
     print(f"Built {len(sites)} site pages, {len(counties)} counties, {indexed} indexed sites")
+    print(f"Featured matches: {len(featured)} ({linked} indexed, {len(featured) - linked} not indexed)")
     print(f"Sitemap URLs: {len(urls)}")
 
 
