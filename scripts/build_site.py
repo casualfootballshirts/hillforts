@@ -875,7 +875,27 @@ WAY_PHRASE = {
 }
 
 
-def getting_there(site, record, neighbors, indexed_extra=None) -> str:
+def fort_link_labels(groups, by_slug, by_name) -> dict:
+    """Anchor text for nearby forts, disambiguated when names collide."""
+    import hub_copy
+
+    context = []
+    seen = set()
+    for group in groups:
+        for item in group or []:
+            other = by_slug.get(item["slug"])
+            if other is None or other["code"] in seen:
+                continue
+            context.append(other)
+            seen.add(other["code"])
+    labels = {}
+    for other in context:
+        peers = hub_copy.label_context(other, context, by_name)
+        labels[other["slug"]] = hub_copy.public_label(other, peers)
+    return labels
+
+
+def getting_there(site, record, neighbors, indexed_extra=None, labels=None) -> str:
     record = record or {}
     items = []
     for index, park in enumerate(record.get("parking") or []):
@@ -913,7 +933,7 @@ def getting_there(site, record, neighbors, indexed_extra=None) -> str:
     if neighbors:
         entries = []
         for other in neighbors:
-            link = f'<a href="/sites/{esc(other["slug"])}/">{esc(other["name"])}</a>'
+            link = f'<a href="/sites/{esc(other["slug"])}/">{esc((labels or {}).get(other["slug"], other["name"]))}</a>'
             distance = esc(travel_distance(other["metres"]))
             bearing = esc(other["bearing"])
             entries.append(f'<li class="nearby-fort">{link} is {distance} to the {bearing}.</li>')
@@ -921,7 +941,7 @@ def getting_there(site, record, neighbors, indexed_extra=None) -> str:
     if indexed_extra:
         entries = []
         for other in indexed_extra:
-            link = f'<a href="/sites/{esc(other["slug"])}/">{esc(other["name"])}</a>'
+            link = f'<a href="/sites/{esc(other["slug"])}/">{esc((labels or {}).get(other["slug"], other["name"]))}</a>'
             distance = esc(travel_distance(other["metres"]))
             bearing = esc(other["bearing"])
             entries.append(f'<li class="visit-nearby">{link} is {distance} to the {bearing}.</li>')
@@ -958,7 +978,7 @@ def render_photo(site, photo) -> str:
     )
 
 
-def site_page(site, access, neighbors, photo=None, indexed_extra=None) -> str:
+def site_page(site, access, neighbors, photo=None, indexed_extra=None, labels=None) -> str:
     indexed = bool(site.get("index"))
     robots = "index,follow" if indexed else "noindex,follow"
     crumbs = (
@@ -1008,7 +1028,7 @@ def site_page(site, access, neighbors, photo=None, indexed_extra=None) -> str:
 {photo_html}
 {lede}
 <div class="layout">
-<article class="panel">{render_facts(site)}{getting_there(site, access, neighbors, indexed_extra)}{render_links(site)}{render_refs(site)}</article>
+<article class="panel">{render_facts(site)}{getting_there(site, access, neighbors, indexed_extra, labels)}{render_links(site)}{render_refs(site)}</article>
 <aside class="panel">
 <div id="map" class="map site-map" data-mode="site" data-lat="{site["lat"]}" data-lon="{site["lon"]}" data-name="{esc(site["name"])}" role="region" aria-label="Map of {esc(site["name"])}"></div>
 </aside>
@@ -1329,8 +1349,17 @@ def main():
     neighbors = nearest_hillforts(sites)
     featured = load_featured(sites)
     indexed_extra = indexed_visit_targets(sites, neighbors)
+    by_slug = {site["slug"]: site for site in sites}
+    by_name = defaultdict(list)
+    for site in sites:
+        by_name[site["name"]].append(site)
     for site in sites:
         photo = photos.get(site["slug"]) if site.get("index") else None
+        labels = fort_link_labels(
+            [neighbors.get(site["slug"]), indexed_extra.get(site["slug"])],
+            by_slug,
+            by_name,
+        )
         write(
             DIST / "sites" / site["slug"] / "index.html",
             site_page(
@@ -1339,6 +1368,7 @@ def main():
                 neighbors.get(site["slug"]),
                 photo,
                 indexed_extra.get(site["slug"]),
+                labels,
             ),
         )
 

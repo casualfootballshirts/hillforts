@@ -75,6 +75,13 @@ REJECTED = {
     "EN0774", "EN1001", "EN2576", "EN3135", "EN3183", "EN3774", "EN3775",
     "EN3885", "EN3975", "EN4043", "IOM3220", "NI0805", "NI0806", "SC2185",
     "SC2220", "SC2824", "SC2840", "SC3045", "WA1269",
+    # Promoted forts whose best free photo was the wrong subject.
+    "EN0551",  # cup-and-ring stone, not the fort
+    "EN3984",  # Burwalls house
+    "SC1477",  # modern cairn on the hill
+    "SC1858",  # beech trees near the town
+    "SC2662",  # view from the hill, not the fort
+    "SC3204",  # hillside with no fort visible
 }
 CONTAINERS = {
     "skye", "mull", "mainland", "islay", "jura", "arran", "orkney", "shetland",
@@ -1238,14 +1245,20 @@ def run(args):
         old = previous.get(fort["slug"]) or {}
         wide = PHOTO_DIR / f"{fort['slug']}-1200.webp"
         narrow = PHOTO_DIR / f"{fort['slug']}-600.webp"
-        if old.get("file") == candidate["file"] and wide.is_file() and narrow.is_file():
-            record = record_of(
-                fort,
-                candidate,
-                (old["wideWidth"], old["wideHeight"]),
-                (old["narrowWidth"], old["narrowHeight"]),
-            )
-            photos[fort["slug"]] = record
+        same_file = old.get("file") == candidate["file"] and old.get("wideWidth")
+        # A retried --only run may already have written the WebP pair before
+        # photos.json was updated. A full run still requires the stored file URL.
+        reuse_unrecorded = args.only and not old.get("file")
+        if wide.is_file() and narrow.is_file() and (same_file or reuse_unrecorded):
+            if same_file:
+                wide_size = (old["wideWidth"], old["wideHeight"])
+                narrow_size = (old["narrowWidth"], old["narrowHeight"])
+            else:
+                with Image.open(wide) as image:
+                    wide_size = image.size
+                with Image.open(narrow) as image:
+                    narrow_size = image.size
+            photos[fort["slug"]] = record_of(fort, candidate, wide_size, narrow_size)
             reused += 1
         else:
             download_list.append(fort)
@@ -1269,6 +1282,12 @@ def run(args):
                     continue
                 photos[slug] = record
                 print(f"  saved {photos[slug]['id']}", flush=True)
+    # A trial run for a few forts must not wipe the cached set.
+    if args.only:
+        selected = {fort["slug"] for fort in forts}
+        for slug, record in previous.items():
+            if slug not in selected and slug not in photos:
+                photos[slug] = record
     keep = {f"{slug}-1200.webp" for slug in photos} | {f"{slug}-600.webp" for slug in photos}
     for path in PHOTO_DIR.glob("*.webp"):
         if path.name not in keep:
@@ -1280,7 +1299,7 @@ def run(args):
 
     # Drop choices whose file did not save, and drop a shared file's loser
     # again if a download failed.
-    saved = {slug: chosen[slug] for slug in photos}
+    saved = {slug: chosen[slug] for slug in photos if slug in chosen}
     payload = {slug: photos[slug] for slug in sorted(photos)}
     OUTPUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote {OUTPUT} ({len(payload)} forts)")
