@@ -28,6 +28,12 @@ from openpyxl import load_workbook
 ROOT = Path(__file__).resolve().parents[1]
 TARGET_INDEX = 300
 
+# Kept in the sitemap on top of the ranked set. Search Console queries
+# name these forts. scripts/hub_copy.py is the list verify_site.py checks.
+def _promoted_codes():
+    import hub_copy
+    return set(hub_copy.PROMOTED_CODES)
+
 # Well-known named sites. Used only to rank which pages get an original
 # visitor introduction. These numbers are Atlas record ids, not page copy.
 FAMOUS_IDS = {
@@ -390,11 +396,12 @@ def substance_score(site):
 
 
 def choose_index(sites):
-    """Pick about 300 pages for the sitemap.
+    """Pick the ranked pages for the sitemap, then add searched forts.
 
     Wikipedia sitelinks, scheduled status, extant condition, size, and a
     short list of well-known names all add weight. Well-known names stay in
-    even when that pushes the set to the cap.
+    even when that pushes the set to the cap. Forts people search for by
+    name are added on top of that set.
     """
     ranked = sorted(
         sites,
@@ -439,6 +446,13 @@ def choose_index(sites):
             chosen_by_nation[drop["nation"]] -= 1
             chosen.add(candidate["id"])
             chosen_by_nation[nation] += 1
+
+    promoted = _promoted_codes()
+    found = {site["code"] for site in sites if site["code"] in promoted}
+    missing = promoted - found
+    if missing:
+        raise SystemExit(f"Promoted forts missing from the Atlas table: {sorted(missing)}")
+    chosen.update(site["id"] for site in sites if site["code"] in promoted)
 
     for site in sites:
         site["index"] = site["id"] in chosen

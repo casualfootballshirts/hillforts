@@ -15,6 +15,52 @@ from statistics import median
 
 FULL_INDEXED_MIN = 3
 
+# Searched forts added to the sitemap on top of the ranked set.
+PROMOTED_CODES = (
+    "EN3984",  # Burgh Walls Camp
+    "EN0168",  # Bury Hill, Oxfordshire
+    "EN0400",  # Bury Hill Camp, Purton
+    "EN3961",  # Bury Hill, Winterbourne
+    "SC3654",  # Cademuir Hill 1
+    "SC3653",  # Cademuir Hill 2
+    "WA1169",  # Castell Cawr
+    "SC1858",  # Castle Craig, Tillicoultry
+    "SC3204",  # Benarty
+    "EN0061",  # Caynham Camp
+    "EN0012",  # Croft Ambrey
+    "EN3351",  # Dumpdon Camp
+    "SC2625",  # Dundurn
+    "SC1477",  # Dunmore, Fintry
+    "SC2612",  # Dunmore, Callander
+    "SC3180",  # Dunmore, Fife
+    "SC2662",  # Dun Mor
+    "IR0978",  # Dunmore (Shanooan)
+    "SC3062",  # Dunsinane Hill
+    "EN3184",  # Helsby Hill Camp
+    "EN3793",  # Ladle Hill
+    "WA1987",  # Dinas Mawr, Llanwnda
+    "WA1952",  # Garn Fechan, Llanwnda
+    "EN0551",  # Lordenshaws
+    "WA1177",  # Dinas Melin-y-Wig
+    "EN3829",  # Toothill Camp
+)
+
+# Link text where the Atlas name is shared, or is one of several forts
+# searched under the same words. The place is the parish, current county,
+# or alternative name already on the record.
+LINK_LABELS = {
+    "EN0168": "Bury Hill, Oxfordshire",
+    "EN0400": "Bury Hill, Purton",
+    "SC1477": "Dunmore, Fintry",
+    "SC2612": "Dunmore, Callander",
+    "SC3180": "Dunmore, Fife",
+    "SC2662": "Dun Mor, Fowlis Wester",
+    "SC1858": "Castle Craig, Tillicoultry",
+    "SC2650": "Castle Craig, Auchterarder",
+    "SC3654": "Cademuir Hill (Hill 1)",
+    "SC3653": "Cademuir Hill (Hill 2)",
+}
+
 COUNTRY_CODE = {
     "England": "GB",
     "Scotland": "GB",
@@ -155,7 +201,51 @@ def roman_framing(kind: str, name: str, country: str) -> bool:
     return country in BRITAIN
 
 
+def public_label(site, peers) -> str:
+    """Anchor text. A shared primary name gains a place from the record."""
+    fixed = LINK_LABELS.get(site.get("code") or "")
+    if fixed:
+        return fixed
+    name = site.get("name") or ""
+    same = [other for other in peers if other.get("name") == name]
+    if len(same) <= 1:
+        return name
+    parish = site.get("parish") or ""
+    if parish and sum(1 for other in same if (other.get("parish") or "") == parish) == 1:
+        if parish.lower() not in name.lower():
+            return f"{name}, {parish}"
+    for alt in site.get("alt") or []:
+        if not isinstance(alt, str):
+            continue
+        if not alt.lower().startswith(name.lower()):
+            continue
+        rest = alt[len(name):].strip(" ,-")
+        if rest.isdigit():
+            return f"{name} (Hill {rest})"
+    county = site.get("county") or ""
+    if county and sum(1 for other in same if (other.get("county") or "") == county) == 1:
+        if county.lower() not in name.lower():
+            return f"{name}, {county}"
+    if parish and parish.lower() not in name.lower():
+        return f"{name}, {parish}"
+    return f"{name} ({site.get('code')})"
+
+
+def label_context(site, context, by_name) -> list:
+    """Sites in view, plus other indexed forts with the same primary name."""
+    peers = list(context)
+    seen = {item.get("code") for item in peers}
+    for other in by_name.get(site.get("name"), ()):
+        if other.get("index") and other.get("code") not in seen:
+            peers.append(other)
+            seen.add(other.get("code"))
+    return peers
+
+
 def distinctive_name(site, group) -> str:
+    fixed = LINK_LABELS.get(site.get("code") or "")
+    if fixed:
+        return fixed
     same = [other for other in group if other["name"] == site["name"]]
     if len(same) == 1:
         return site["name"]
@@ -1420,7 +1510,7 @@ def popular_html(profile, best, featured) -> str:
             county = f"<span>{esc(site['county'])}</span>"
         items.append(
             "<li>"
-            f'<a href="/sites/{esc(site["slug"])}/">{esc(site["name"])}</a>'
+            f'<a href="/sites/{esc(site["slug"])}/">{esc(public_label(site, profile["sites"]))}</a>'
             f"{county}</li>"
         )
     return f'<h2>Popular hillforts</h2><ul class="county-grid popular-forts">{"".join(items)}</ul>'
@@ -1455,7 +1545,7 @@ def hub_content(sites, *, kind, name, country, slug, nation_slug, canonical, fea
             size_html = f' <span class="best-size">{esc(size)}</span>' if size else ""
             items.append(
                 "<li><div class=\"best-body\">"
-                f'<a href="/sites/{esc(site["slug"])}/">{esc(site["name"])}</a>{size_html}'
+                f'<a href="/sites/{esc(site["slug"])}/">{esc(public_label(site, profile["sites"]))}</a>{size_html}'
                 f"<p>{esc(fact_line(site))}</p></div></li>"
             )
         best_html = f"<h2>{esc(best_heading(name))}</h2><ol class=\"best-list\">{''.join(items)}</ol>"

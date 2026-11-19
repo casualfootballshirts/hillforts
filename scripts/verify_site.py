@@ -8,6 +8,7 @@ import json
 import re
 import sys
 from collections import defaultdict
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -435,25 +436,53 @@ def check_hub_fort_links(sites):
             hub_cache[key] = path.read_text(encoding="utf-8") if path.is_file() else ""
         return hub_cache[key]
 
+    import hub_copy
+
+    by_county = defaultdict(list)
+    by_nation = defaultdict(list)
+    for site in sites:
+        by_county[site["countySlug"]].append(site)
+        by_nation[site["nation"]].append(site)
+    promoted = set(hub_copy.PROMOTED_CODES)
     indexed_matches = 0
+    seen_lists = set()
     for query, site in matched:
-        anchor = f'<a href="/sites/{site["slug"]}/">{html.escape(site["name"], quote=True)}</a>'
         for kind, slug in (("county", site["countySlug"]), ("nation", site["nation"])):
             text = hub_text(kind, slug)
             label = f"{kind} {slug}"
             if not text:
                 errors += fail(f"missing {label} hub for {site['code']}")
                 continue
+            group = by_county[slug] if kind == "county" else by_nation[slug]
+            anchor_text = hub_copy.public_label(site, group)
+            anchor = f'<a href="/sites/{site["slug"]}/">{html.escape(anchor_text, quote=True)}</a>'
             top = text.split('<ul class="site-list"', 1)[0]
             popular = re.search(r'<ul class="county-grid popular-forts">(.*?)</ul>', text, re.S)
             popular_html = popular.group(1) if popular else ""
             best = re.search(r'<ol class="best-list">(.*?)</ol>', text, re.S)
             best_html = best.group(1) if best else ""
+            list_key = (kind, slug)
+            if list_key not in seen_lists:
+                seen_lists.add(list_key)
+                for block_name, block in (("popular", popular_html), ("best", best_html)):
+                    texts = [
+                        html.unescape(item)
+                        for item in re.findall(r'<a href="/sites/[^"]+/">([^<]*)</a>', block)
+                    ]
+                    if len(texts) != len(set(texts)):
+                        errors += fail(f"{label} {block_name} list repeats an anchor")
             if site.get("index"):
                 if anchor not in top:
                     errors += fail(
                         f"{label} does not link {site['code']} {site['name']} near the top ({query})"
                     )
+                if site["code"] in promoted:
+                    in_best = f'/sites/{site["slug"]}/' in best_html
+                    in_popular = anchor in popular_html
+                    if not in_best and not in_popular:
+                        errors += fail(
+                            f"{label} does not list promoted {site['code']} in the best or popular list"
+                        )
             elif anchor in popular_html or f'/sites/{site["slug"]}/' in popular_html:
                 errors += fail(f"{label} popular list links noindexed {site['code']}")
             elif f'/sites/{site["slug"]}/' in best_html:
@@ -476,7 +505,7 @@ def check_hub_fort_links(sites):
             break
         checked += 1
     else:
-        if checked != 300:
+        if checked != 326:
             errors += fail(f"county plain-link check covered {checked} indexed forts")
     if indexed_matches < 1:
         errors += fail("featured_forts.json has no indexed forts to link")
@@ -618,6 +647,51 @@ def check_home_highlights(sites, home, sitemap):
     return errors
 
 
+def check_promoted(sites, sitemap):
+    """The searched forts stay indexed, in the sitemap, and on the fort template."""
+    import hub_copy
+
+    errors = 0
+    by_code = {site["code"]: site for site in sites}
+    today = date.today().isoformat()
+    locs = set(re.findall(r"<loc>(.*?)</loc>", sitemap))
+    if len(hub_copy.PROMOTED_CODES) != 26:
+        errors += fail(f"expected 26 promoted forts, found {len(hub_copy.PROMOTED_CODES)}")
+    for code in hub_copy.PROMOTED_CODES:
+        site = by_code.get(code)
+        if site is None:
+            errors += fail(f"promoted {code} is not in sites.json")
+            continue
+        if not site.get("index"):
+            errors += fail(f"{code} should be indexed")
+        url = f"https://hillfortsmap.co.uk/sites/{site['slug']}/"
+        if url not in locs:
+            errors += fail(f"{code} missing from sitemap")
+        if f"<loc>{url}</loc><lastmod>{today}</lastmod>" not in sitemap:
+            errors += fail(f"{code} sitemap lastmod is not {today}")
+        page = DIST / "sites" / site["slug"] / "index.html"
+        if not page.is_file():
+            errors += fail(f"{code} page missing")
+            continue
+        text = page.read_text(encoding="utf-8")
+        if 'content="index,follow"' not in text or 'content="noindex' in text:
+            errors += fail(f"{code} robots tag is not index,follow")
+        if f'rel="canonical" href="{url}"' not in text:
+            errors += fail(f"{code} canonical")
+        if 'class="lede"' not in text:
+            errors += fail(f"{code} missing visitor copy")
+        if "<h3>Getting there</h3>" not in text:
+            errors += fail(f"{code} missing Getting there")
+        for needle in (
+            "Lock &amp; Ralston",
+            "CC BY-SA 4.0",
+            "https://doi.org/10.5284/1118744",
+        ):
+            if needle not in text:
+                errors += fail(f"{code} missing attribution {needle}")
+    return errors
+
+
 def main():
     errors = 0
     sites = json.loads(SITES.read_text(encoding="utf-8"))
@@ -630,8 +704,8 @@ def main():
         errors += fail(f"expected 4147 sites, found {len(sites)}")
 
     indexed = [site for site in sites if site.get("index")]
-    if len(indexed) != 300:
-        errors += fail(f"expected 300 indexed sites, found {len(indexed)}")
+    if len(indexed) != 326:
+        errors += fail(f"expected 326 indexed sites, found {len(indexed)}")
 
     slugs = [site["slug"] for site in sites]
     if len(slugs) != len(set(slugs)):
@@ -675,8 +749,8 @@ def main():
 
     sitemap = (DIST / "sitemap.xml").read_text(encoding="utf-8")
     expected_urls = 1 + len(INFO_INDEXED) + 6 + len(county_slugs) + len(indexed)
-    if expected_urls != 487:
-        errors += fail(f"sitemap formula changed: {expected_urls} != 487")
+    if expected_urls != 513:
+        errors += fail(f"sitemap formula changed: {expected_urls} != 513")
     if sitemap.count("<loc>") != expected_urls:
         errors += fail(f"sitemap locs {sitemap.count('<loc>')} != {expected_urls}")
     for slug in INFO_INDEXED:
@@ -733,6 +807,7 @@ def main():
         errors += fail("nation page content")
     errors += check_hubs(sites)
     errors += check_hub_fort_links(sites)
+    errors += check_promoted(sites, sitemap)
 
     # Spot-check a few more pages for banned narrative, not only the samples.
     checked = 0
