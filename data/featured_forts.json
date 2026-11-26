@@ -53,6 +53,31 @@
     {"query": "ord & teine", "ids": [], "note": "No Atlas record uses this name."},
     {"query": "segsbury camp", "ids": ["EN0155"]},
     {"query": "toothill fort", "ids": ["EN3829"]},
-    {"query": "maiden castle", "ids": ["EN3598"], "note": "Maiden Castle, Winterborne St Martin, Dorset."}
+    {"query": "maiden castle", "ids": ["EN3598"], "note": "Maiden Castle, Winterborne St Martin, Dorset."},
+    {"query": "knollbury", "ids": ["EN0153"]},
+    {"query": "boddington camp", "ids": ["EN3425"]},
+    {"query": "walls hill fort", "ids": ["SC1389"]},
+    {"query": "dinmore hill", "ids": ["EN0014"]},
+    {"query": "bodbury ring", "ids": ["EN0043"]},
+    {
+      "query": "cadbury camp",
+      "ids": ["EN3986"],
+      "note": "Cadbury Camp, Tickenham. Cadbury Castle and Cadbury Hill Camp are different forts."
+    },
+    {"query": "mowsbury hill", "ids": ["EN3299"]},
+    {"query": "brough of bigging", "ids": ["SC2837"]},
+    {"query": "llanmelin wood camp", "ids": ["WA2426"]},
+    {"query": "woolsbarrow", "ids": ["EN3611"]},
+    {"query": "chalbury", "ids": ["EN3587"]},
+    {
+      "query": "castlelaw hill fort",
+      "ids": ["SC3710"],
+      "note": "Castle Law, Glencorse, also called Castlelaw. SC3030 Castle Law, Abernethy also lists Castlelaw."
+    },
+    {
+      "query": "castle knowe",
+      "ids": ["SC0885"],
+      "note": "Castle Knowe, Johnstone, Dumfries & Galloway. SC3712 is another Castle Knowe, in Glencorse."
+    }
   ]
 }

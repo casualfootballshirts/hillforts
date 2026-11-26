@@ -505,7 +505,7 @@ def check_hub_fort_links(sites):
             break
         checked += 1
     else:
-        if checked != 326:
+        if checked != 339:
             errors += fail(f"county plain-link check covered {checked} indexed forts")
     if indexed_matches < 1:
         errors += fail("featured_forts.json has no indexed forts to link")
@@ -655,8 +655,8 @@ def check_promoted(sites, sitemap):
     by_code = {site["code"]: site for site in sites}
     today = date.today().isoformat()
     locs = set(re.findall(r"<loc>(.*?)</loc>", sitemap))
-    if len(hub_copy.PROMOTED_CODES) != 26:
-        errors += fail(f"expected 26 promoted forts, found {len(hub_copy.PROMOTED_CODES)}")
+    if len(hub_copy.PROMOTED_CODES) != 39:
+        errors += fail(f"expected 39 promoted forts, found {len(hub_copy.PROMOTED_CODES)}")
     for code in hub_copy.PROMOTED_CODES:
         site = by_code.get(code)
         if site is None:
@@ -704,8 +704,8 @@ def main():
         errors += fail(f"expected 4147 sites, found {len(sites)}")
 
     indexed = [site for site in sites if site.get("index")]
-    if len(indexed) != 326:
-        errors += fail(f"expected 326 indexed sites, found {len(indexed)}")
+    if len(indexed) != 339:
+        errors += fail(f"expected 339 indexed sites, found {len(indexed)}")
 
     slugs = [site["slug"] for site in sites]
     if len(slugs) != len(set(slugs)):
@@ -749,8 +749,8 @@ def main():
 
     sitemap = (DIST / "sitemap.xml").read_text(encoding="utf-8")
     expected_urls = 1 + len(INFO_INDEXED) + 6 + len(county_slugs) + len(indexed)
-    if expected_urls != 513:
-        errors += fail(f"sitemap formula changed: {expected_urls} != 513")
+    if expected_urls != 526:
+        errors += fail(f"sitemap formula changed: {expected_urls} != 526")
     if sitemap.count("<loc>") != expected_urls:
         errors += fail(f"sitemap locs {sitemap.count('<loc>')} != {expected_urls}")
     for slug in INFO_INDEXED:

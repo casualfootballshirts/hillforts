@@ -82,6 +82,71 @@ REJECTED = {
     "SC1858",  # beech trees near the town
     "SC2662",  # view from the hill, not the fort
     "SC3204",  # hillside with no fort visible
+    # Promoted forts whose free photos are the wrong subject.
+    "EN0014",  # views and a reservoir, not the fort
+    "EN3587",  # a quarry and pasture, not the fort
+    "SC0885",  # a minor road
+    "SC2837",  # Yesnaby sea cliffs
+}
+# A reviewed file that does not show the fort. The next candidate is used.
+WRONG_SUBJECT = {
+    "File:View to the north from Dinmore Hill - geograph.org.uk - 7084869.jpg",
+    "File:Dinmore Hill - geograph.org.uk - 7303156.jpg",
+    "File:Bodbury Ring Hillfort (geograph 7383352).jpg",
+    "File:Old Cart Tracks inside Boddington Banks - geograph.org.uk - 1188612.jpg",
+    "File:Green Hill - geograph.org.uk - 831511.jpg",
+    "File:Old Quarry , Chalbury - geograph.org.uk - 832156.jpg",
+    "File:Trig Point on Woolsbarrow Hill Fort - geograph.org.uk - 160919.jpg",
+    "File:Trig Point, Woolsbarrow Hill Fort - geograph.org.uk - 2149784.jpg",
+    "File:Woolsbarrow, trig point - geograph.org.uk - 2825252.jpg",
+    "File:Bloxworth, Woolsbarrow Hill Fort - geograph.org.uk - 2825250.jpg",
+    "File:Minor road, Castle Knowe - geograph.org.uk - 6996029.jpg",
+    "File:Cliffs at Yesnaby - geograph.org.uk - 1011086.jpg",
+    "File:Rough seas at Yesnaby (geograph 3744442).jpg",
+    "File:Castlelaw Hill Fort - geograph.org.uk - 1513887.jpg",
+    "File:Castlelaw - geograph.org.uk - 1731106.jpg",
+    "File:Castlelaw - geograph.org.uk - 10317.jpg",
+    "File:Castlelaw - geograph.org.uk - 211906.jpg",
+    "File:Castlelaw - geograph.org.uk - 772549.jpg",
+    "File:Track maintenance at Castlelaw - geograph.org.uk - 1188957.jpg",
+    "File:Signs, Castlelaw - geograph.org.uk - 1731102.jpg",
+    "File:Sheep pens, Castlelaw Farm - geograph.org.uk - 1217267.jpg",
+    "File:Penned in at Castlelaw Farm - geograph.org.uk - 1513859.jpg",
+    "File:Range, Castlelaw Hill - geograph.org.uk - 1012630.jpg",
+    "File:Castlelaw Farm - geograph.org.uk - 1513843.jpg",
+    "File:Castlelaw Farm - geograph.org.uk - 211914.jpg",
+    "File:Castlelaw Farm - geograph.org.uk - 6617918.jpg",
+    "File:Castlelaw farm - geograph.org.uk - 3344029.jpg",
+    "File:Castlelaw Hill - geograph.org.uk - 1734248.jpg",
+    "File:Castlelaw Hill - geograph.org.uk - 1468845.jpg",
+    "File:Castlelaw Hill - geograph.org.uk - 2884754.jpg",
+    "File:Castlelaw Hill - geograph.org.uk - 305810.jpg",
+    "File:Castlelaw Hill - geograph.org.uk - 3189190.jpg",
+    "File:Castlelaw Hill Cairn - geograph.org.uk - 1188927.jpg",
+    "File:Castlelaw Hill ^ Glencorse Reservoir - geograph.org.uk - 2739509.jpg",
+    "File:Castlelaw Hill from the path up to Turnhouse Hill, Pentlands - geograph.org.uk - 1578494.jpg",
+    "File:Castlelaw Reflected - geograph.org.uk - 7355889.jpg",
+    "File:Castlelaw and beyond - geograph.org.uk - 4638678.jpg",
+    "File:Castlelaw from Turnhouse Hill - geograph.org.uk - 1401797.jpg",
+    "File:Castlelaw ranges - geograph.org.uk - 7992388.jpg",
+    "File:Eastern slopes of Castlelaw Hill - geograph.org.uk - 1217260.jpg",
+    "File:Firing Ranges at Castlelaw - geograph.org.uk - 3189198.jpg",
+    "File:Gate and information boards, Castlelaw - geograph.org.uk - 3344017.jpg",
+    "File:Glencorse from Castlelaw hillfort - geograph.org.uk - 3189201.jpg",
+    "File:Access road to military firing ranges at Castlelaw - geograph.org.uk - 2577824.jpg",
+    "File:Allermuir - Castlelaw col - geograph.org.uk - 7655376.jpg",
+    "File:M.O.D. warning notice at Castlelaw, Pentlands - geograph.org.uk - 2577841.jpg",
+    "File:Muir burn, west side of Castlelaw Hill - geograph.org.uk - 772670.jpg",
+    "File:North of Castlelaw Hill - geograph.org.uk - 1731128.jpg",
+    "File:Path beneath Castlelaw - geograph.org.uk - 772657.jpg",
+    "File:Red flag, Castlelaw Hill - geograph.org.uk - 1735824.jpg",
+    "File:Road from Castlelaw - geograph.org.uk - 5892614.jpg",
+    "File:Road, Castlelaw - geograph.org.uk - 5892617.jpg",
+    "File:Roslin Castlelaw Hill seen from Main Street.jpg",
+    "File:Sheep on Castlelaw Hill - geograph.org.uk - 1731122.jpg",
+    "File:Shooting range, Castlelaw Hill - geograph.org.uk - 6642653.jpg",
+    "File:The settlement, Castlelaw - geograph.org.uk - 5892642.jpg",
+    "File:View from Castlelaw - geograph.org.uk - 5551774.jpg",
 }
 CONTAINERS = {
     "skye", "mull", "mainland", "islay", "jura", "arran", "orkney", "shetland",
@@ -646,6 +711,8 @@ def candidate_from(fort, page, source, fallback_distance=None):
         return None
     ext = info.get("extmetadata") or {}
     title = page.get("title") or ""
+    if title in WRONG_SUBJECT:
+        return None
     categories = meta_value(ext, "Categories")
     if not looks_like_photograph(title, categories, info.get("mime"), info.get("mediatype"), info.get("width"), info.get("height")):
         return None
