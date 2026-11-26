@@ -43,6 +43,19 @@ PROMOTED_CODES = (
     "EN0551",  # Lordenshaws
     "WA1177",  # Dinas Melin-y-Wig
     "EN3829",  # Toothill Camp
+    "EN0153",  # Knollbury Camp
+    "EN3425",  # Boddington Camp
+    "SC1389",  # Walls Hill
+    "EN0014",  # Dinmore Hill
+    "EN0043",  # Bodbury Ring
+    "EN3986",  # Cadbury Camp, Tickenham
+    "EN3299",  # Mowsbury Hill
+    "SC2837",  # Brough of Bigging, Yesnaby
+    "WA2426",  # Llanmelin Wood Camp and Outpost
+    "EN3611",  # Woolsbarrow
+    "EN3587",  # Chalbury
+    "SC3710",  # Castle Law, Glencorse
+    "SC0885",  # Castle Knowe
 )
 
 # Link text where the Atlas name is shared, or is one of several forts
@@ -59,6 +72,9 @@ LINK_LABELS = {
     "SC2650": "Castle Craig, Auchterarder",
     "SC3654": "Cademuir Hill (Hill 1)",
     "SC3653": "Cademuir Hill (Hill 2)",
+    "EN3986": "Cadbury Camp, Tickenham",
+    "SC3710": "Castle Law, Glencorse",
+    "SC0885": "Castle Knowe, Johnstone",
 }
 
 COUNTRY_CODE = {

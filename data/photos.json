@@ -101,6 +101,23 @@
     "narrowWidth": 600,
     "narrowHeight": 338
   },
+  "en0043-bodbury-ring": {
+    "id": "EN0043",
+    "source": "commons",
+    "page": "https://commons.wikimedia.org/wiki/File:The_northern_rampart_of_Bodbury_Ring_-_geograph.org.uk_-_2974780.jpg",
+    "file": "https://upload.wikimedia.org/wikipedia/commons/f/f9/The_northern_rampart_of_Bodbury_Ring_-_geograph.org.uk_-_2974780.jpg",
+    "author": "Richard Law",
+    "licence": "CC BY-SA 2.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "via": "Wikimedia Commons",
+    "title": "The northern rampart of Bodbury Ring",
+    "match": "name",
+    "metres": 34,
+    "wideWidth": 1142,
+    "wideHeight": 857,
+    "narrowWidth": 600,
+    "narrowHeight": 450
+  },
   "en0046-burrow-hill-camp": {
     "id": "EN0046",
     "source": "commons",
@@ -470,6 +487,23 @@
     "title": "The Roundabout hillfort, Lyneham 06",
     "match": "name",
     "metres": null,
+    "wideWidth": 1200,
+    "wideHeight": 900,
+    "narrowWidth": 600,
+    "narrowHeight": 450
+  },
+  "en0153-knollbury-camp": {
+    "id": "EN0153",
+    "source": "commons",
+    "page": "https://commons.wikimedia.org/wiki/File:Knollbury_Camp_(3)_-_geograph.org.uk_-_2938484.jpg",
+    "file": "https://upload.wikimedia.org/wikipedia/commons/d/d6/Knollbury_Camp_%283%29_-_geograph.org.uk_-_2938484.jpg",
+    "author": "Michael Dibb",
+    "licence": "CC BY-SA 2.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "via": "Wikimedia Commons",
+    "title": "Knollbury Camp (3)",
+    "match": "name",
+    "metres": 105,
     "wideWidth": 1200,
     "wideHeight": 900,
     "narrowWidth": 600,
@@ -1648,6 +1682,23 @@
     "narrowWidth": 600,
     "narrowHeight": 394
   },
+  "en3299-mowsbury-hill": {
+    "id": "EN3299",
+    "source": "wikidata",
+    "page": "https://commons.wikimedia.org/wiki/File:MowsburyHillfort3.JPG",
+    "file": "https://upload.wikimedia.org/wikipedia/commons/f/f6/MowsburyHillfort3.JPG",
+    "author": "Simon Speed",
+    "licence": "CC0",
+    "licenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "via": "Wikimedia Commons",
+    "title": "MowsburyHillfort3",
+    "match": "p18",
+    "metres": null,
+    "wideWidth": 1200,
+    "wideHeight": 900,
+    "narrowWidth": 600,
+    "narrowHeight": 450
+  },
   "en3316-ivinghoe-beacon": {
     "id": "EN3316",
     "source": "wikidata",
@@ -1732,6 +1783,23 @@
     "wideHeight": 369,
     "narrowWidth": 600,
     "narrowHeight": 184
+  },
+  "en3425-boddington-camp": {
+    "id": "EN3425",
+    "source": "commons",
+    "page": "https://commons.wikimedia.org/wiki/File:Iron_Age_Ditch_and_Bank_-_geograph.org.uk_-_1188564.jpg",
+    "file": "https://upload.wikimedia.org/wikipedia/commons/d/de/Iron_Age_Ditch_and_Bank_-_geograph.org.uk_-_1188564.jpg",
+    "author": "Chris Reynolds",
+    "licence": "CC BY-SA 2.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "via": "Wikimedia Commons",
+    "title": "Iron Age Ditch and Bank",
+    "match": "category",
+    "metres": 158,
+    "wideWidth": 640,
+    "wideHeight": 480,
+    "narrowWidth": 320,
+    "narrowHeight": 240
   },
   "en3442-bulstrode-camp": {
     "id": "EN3442",
@@ -2038,6 +2106,23 @@
     "wideHeight": 800,
     "narrowWidth": 600,
     "narrowHeight": 400
+  },
+  "en3611-woolsbarrow": {
+    "id": "EN3611",
+    "source": "commons",
+    "page": "https://commons.wikimedia.org/wiki/File:Woolsbarrow_Hill_fort_-_geograph.org.uk_-_2149777.jpg",
+    "file": "https://upload.wikimedia.org/wikipedia/commons/d/d8/Woolsbarrow_Hill_fort_-_geograph.org.uk_-_2149777.jpg",
+    "author": "Nigel Mykura",
+    "licence": "CC BY-SA 2.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "via": "Wikimedia Commons",
+    "title": "Woolsbarrow Hill fort",
+    "match": "name",
+    "metres": 80,
+    "wideWidth": 640,
+    "wideHeight": 480,
+    "narrowWidth": 320,
+    "narrowHeight": 240
   },
   "en3728-ditchling-beacon": {
     "id": "EN3728",
@@ -2447,6 +2532,23 @@
     "narrowWidth": 600,
     "narrowHeight": 450
   },
+  "en3986-cadbury-camp-tickenham": {
+    "id": "EN3986",
+    "source": "wikidata",
+    "page": "https://commons.wikimedia.org/wiki/File:CadburyCampUKpanorama.jpg",
+    "file": "https://upload.wikimedia.org/wikipedia/commons/9/94/CadburyCampUKpanorama.jpg",
+    "author": "Guiltyspark",
+    "licence": "CC BY-SA 3.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "via": "Wikimedia Commons",
+    "title": "CadburyCampUKpanorama",
+    "match": "p18",
+    "metres": 79,
+    "wideWidth": 1200,
+    "wideHeight": 118,
+    "narrowWidth": 600,
+    "narrowHeight": 59
+  },
   "en4044-king-s-weston-down-camp": {
     "id": "EN4044",
     "source": "wikidata",
@@ -2769,6 +2871,23 @@
     "wideHeight": 480,
     "narrowWidth": 320,
     "narrowHeight": 240
+  },
+  "sc1389-walls-hill": {
+    "id": "SC1389",
+    "source": "geograph",
+    "page": "https://commons.wikimedia.org/wiki/File:Walls_Hill_fort_from_the_air_-_geograph.org.uk_-_5993855.jpg",
+    "file": "https://upload.wikimedia.org/wikipedia/commons/c/c0/Walls_Hill_fort_from_the_air_-_geograph.org.uk_-_5993855.jpg",
+    "author": "Thomas Nugent",
+    "licence": "CC BY-SA 2.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "via": "Wikimedia Commons",
+    "title": "Walls Hill fort from the air",
+    "match": "name",
+    "metres": 105,
+    "wideWidth": 1024,
+    "wideHeight": 768,
+    "narrowWidth": 600,
+    "narrowHeight": 450
   },
   "sc1627-arbory-hill": {
     "id": "SC1627",
@@ -3500,6 +3619,23 @@
     "wideHeight": 424,
     "narrowWidth": 320,
     "narrowHeight": 212
+  },
+  "sc3710-castle-law-glencorse": {
+    "id": "SC3710",
+    "source": "commons",
+    "page": "https://commons.wikimedia.org/wiki/File:Castlelaw03.jpg",
+    "file": "https://upload.wikimedia.org/wikipedia/commons/8/82/Castlelaw03.jpg",
+    "author": "Helspence",
+    "licence": "CC BY-SA 4.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "via": "Wikimedia Commons",
+    "title": "Castlelaw03",
+    "match": "category",
+    "metres": 11,
+    "wideWidth": 1200,
+    "wideHeight": 900,
+    "narrowWidth": 600,
+    "narrowHeight": 450
   },
   "sc4069-edin-s-hall": {
     "id": "SC4069",
@@ -4265,6 +4401,23 @@
     "wideHeight": 483,
     "narrowWidth": 320,
     "narrowHeight": 242
+  },
+  "wa2426-llanmelin-wood-camp-and-llanmelin-outpost-caerwent": {
+    "id": "WA2426",
+    "source": "commons",
+    "page": "https://commons.wikimedia.org/wiki/File:Part_of_Llanmelin_hillfort_in_September_-_geograph.org.uk_-_3664875.jpg",
+    "file": "https://upload.wikimedia.org/wikipedia/commons/4/4c/Part_of_Llanmelin_hillfort_in_September_-_geograph.org.uk_-_3664875.jpg",
+    "author": "Jeremy Bolwell",
+    "licence": "CC BY-SA 2.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "via": "Wikimedia Commons",
+    "title": "Part of Llanmelin hillfort in September",
+    "match": "token",
+    "metres": 41,
+    "wideWidth": 640,
+    "wideHeight": 480,
+    "narrowWidth": 320,
+    "narrowHeight": 240
   },
   "wa2438-coed-y-bwnydd-camp": {
     "id": "WA2438",
